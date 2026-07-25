@@ -1,0 +1,152 @@
+name: BotX Pro V56 Isolated Build
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  v56-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SOURCE_FILE_ID: 1CpzzVCoTWhvo67LZ5fEty_UruvDzsy08
+      SOURCE_SHA256: a0b3130400f8a49d7c2fb8a20c6e78765f1db740c4e9476f3c53b2fdc48397cf
+      APP_VERSION: 56.0.0+5600
+      APP_PACKAGE: pro.botx.app
+    steps:
+      - name: Confirm repository source is not checked out
+        run: |
+          test ! -d "$GITHUB_WORKSPACE/.git"
+          echo "No repository app source is present."
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Flutter 3.44.7
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.7'
+          channel: stable
+          cache: true
+
+      - name: Download and verify V56 source bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/v56" "$GITHUB_WORKSPACE/app"
+          curl --fail --location --retry 5 --retry-delay 3 \
+            "https://drive.usercontent.google.com/download?id=${SOURCE_FILE_ID}&export=download&confirm=t" \
+            --output "$RUNNER_TEMP/v56/source.tar.gz"
+          echo "${SOURCE_SHA256}  $RUNNER_TEMP/v56/source.tar.gz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/v56/source.tar.gz" -C "$GITHUB_WORKSPACE/app"
+          cd "$GITHUB_WORKSPACE/app"
+          grep -F "version: ${APP_VERSION}" pubspec.yaml
+          grep -F 'class V56NativeShell' lib/app/v56_native_shell.dart
+          grep -F "namespace = \"${APP_PACKAGE}\"" android/app/build.gradle.kts
+          ! grep -Eq 'webview_flutter|flutter_html' pubspec.yaml
+          ! grep -RIl --exclude='index.html' 'class V55|V55NativeShell' lib assets/config assets/manifests
+
+      - name: Configure ephemeral release-candidate signing
+        working-directory: app
+        shell: bash
+        run: |
+          set -euo pipefail
+          keytool -genkeypair -v -keystore android/v56-rc-keystore.jks \
+            -storepass changeit-v56-rc -keypass changeit-v56-rc \
+            -alias v56rc -keyalg RSA -keysize 3072 -validity 3650 \
+            -dname "CN=BotX Pro V56 Release Candidate, OU=Testing, O=BotX AI, L=Faridabad, ST=Haryana, C=IN"
+          cat > android/key.properties <<'EOF'
+          storePassword=changeit-v56-rc
+          keyPassword=changeit-v56-rc
+          keyAlias=v56rc
+          storeFile=v56-rc-keystore.jks
+          EOF
+
+      - name: Resolve Flutter dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: Strict Flutter analyze
+        working-directory: app
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter analyze --fatal-infos 2>&1 | tee "$RUNNER_TEMP/flutter-analyze.log"
+
+      - name: Flutter unit and widget tests
+        working-directory: app
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter test --reporter expanded 2>&1 | tee "$RUNNER_TEMP/flutter-tests.log"
+
+      - name: Capture V56 phone screenshots
+        working-directory: app
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p test/goldens/generated
+          flutter test --update-goldens test/v56_visual_capture_test.dart 2>&1 | tee "$RUNNER_TEMP/flutter-visual.log"
+          test "$(find test/goldens/generated -name '*.png' | wc -l)" -eq 7
+
+      - name: Build ARM64 APK
+        working-directory: app
+        run: flutter build apk --release --target-platform android-arm64 --dart-define=ALLOW_LIVE_MODE=false
+
+      - name: Build Android App Bundle
+        working-directory: app
+        run: flutter build appbundle --release --dart-define=ALLOW_LIVE_MODE=false
+
+      - name: Validate Android release candidate
+        working-directory: app
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          AAB=build/app/outputs/bundle/release/app-release.aab
+          test -s "$APK"
+          test -s "$AAB"
+          APK_SIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          "$APK_SIGNER" verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/apksigner.log"
+          unzip -p "$APK" AndroidManifest.xml >/dev/null
+          strings "$APK" | grep -qv 'sk-[A-Za-z0-9]'
+          strings "$APK" | grep -qv 'gsk_[A-Za-z0-9]'
+          sha256sum "$APK" "$AAB" | tee "$GITHUB_WORKSPACE/app/BotX_Pro_V56_ANDROID_SHA256SUMS.txt"
+          cp "$APK" "$GITHUB_WORKSPACE/app/BotX_Pro_V56_ARM64_Release_Candidate.apk"
+          cp "$AAB" "$GITHUB_WORKSPACE/app/BotX_Pro_V56_Release_Candidate.aab"
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: botx-pro-v56-build-diagnostics
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/flutter-analyze.log
+            ${{ runner.temp }}/flutter-tests.log
+            ${{ runner.temp }}/flutter-visual.log
+            ${{ runner.temp }}/apksigner.log
+
+      - name: Upload screenshots
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: botx-pro-v56-ui-screenshots
+          path: app/test/goldens/generated/*.png
+
+      - name: Upload APK and AAB
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: botx-pro-v56-android-release-candidate
+          path: |
+            app/BotX_Pro_V56_ARM64_Release_Candidate.apk
+            app/BotX_Pro_V56_Release_Candidate.aab
+            app/BotX_Pro_V56_ANDROID_SHA256SUMS.txt
