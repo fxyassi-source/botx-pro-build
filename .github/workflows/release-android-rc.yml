@@ -19,7 +19,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       SOURCE_FILE_ID: 1CpzzVCoTWhvo67LZ5fEty_UruvDzsy08
-      SOURCE_SHA256: 32e95e55a6963bc1e70392e55a04a67252c00f628362258b94dccad771e3119e
+      SOURCE_SHA256: 059e07f491b62a78e696a5e46273e03c54367f344fcf5f9e72ef591508c47677
       SIGNING_TAG: botx-android-signing-v1
 
     steps:
@@ -131,8 +131,10 @@ jobs:
           set -o pipefail
           {
             flutter build apk --release --split-per-abi \
+              --build-name=15.0.7 --build-number=1508 \
               --dart-define=BOTX_ENV=release-candidate
             flutter build appbundle --release \
+              --build-name=15.0.7 --build-number=1508 \
               --dart-define=BOTX_ENV=release-candidate
           } 2>&1 | tee ../build-release.log
 
@@ -158,17 +160,17 @@ jobs:
           test -s "${ARMV7}"
           test -s "${X64}"
           test -s "${AAB}"
+          cp "${ARM64}" dist/BotX_Pro_Master_V14_15_0_7_RC1508_ARM64_Release.apk
+          cp "${ARMV7}" dist/BotX_Pro_Master_V14_15_0_7_RC1508_ARMv7_Release.apk
+          cp "${X64}" dist/BotX_Pro_Master_V14_15_0_7_RC1508_x86_64_Release.apk
+          cp "${AAB}" dist/BotX_Pro_Master_V14_15_0_7_RC1508_Release.aab
+          cp signing-certificate-summary.txt dist/
           AAPT="$(find "${ANDROID_HOME}/build-tools" -type f -name aapt | sort -V | tail -1)"
           APKSIGNER="$(find "${ANDROID_HOME}/build-tools" -type f -name apksigner | sort -V | tail -1)"
           "${AAPT}" dump badging "${ARM64}" | tee dist/apk-badging-arm64.txt
           grep -q "package: name='pro.botx.app' versionCode='1508' versionName='15.0.7'" dist/apk-badging-arm64.txt
           "${APKSIGNER}" verify --verbose --print-certs "${ARM64}" | tee dist/apksigner-arm64.txt
           grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' dist/apksigner-arm64.txt
-          cp "${ARM64}" dist/BotX_Pro_Master_V14_15_0_7_RC1508_ARM64_Release.apk
-          cp "${ARMV7}" dist/BotX_Pro_Master_V14_15_0_7_RC1508_ARMv7_Release.apk
-          cp "${X64}" dist/BotX_Pro_Master_V14_15_0_7_RC1508_x86_64_Release.apk
-          cp "${AAB}" dist/BotX_Pro_Master_V14_15_0_7_RC1508_Release.aab
-          cp signing-certificate-summary.txt dist/
           sha256sum dist/*.apk dist/*.aab | tee dist/SHA256SUMS.txt
 
       - name: Upload signed release artifacts and diagnostics
