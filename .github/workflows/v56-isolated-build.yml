@@ -128,7 +128,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          keytool -genkeypair -v -keystore android/v56-rc-keystore.jks \
+          keytool -genkeypair -v -keystore android/app/v56-rc-keystore.jks \
             -storepass changeit-v56-rc -keypass changeit-v56-rc \
             -alias v56rc -keyalg RSA -keysize 3072 -validity 3650 \
             -dname "CN=BotX Pro V56 Release Candidate, OU=Testing, O=BotX AI, L=Faridabad, ST=Haryana, C=IN"
