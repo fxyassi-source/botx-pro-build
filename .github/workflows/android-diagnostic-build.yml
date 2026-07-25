@@ -2,6 +2,10 @@ name: Android Diagnostic Build
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.build-trigger/**'
 
 permissions:
   contents: read
@@ -21,15 +25,25 @@ jobs:
           flutter-version: '3.44.7'
           channel: stable
           cache: true
+
       - name: Stage verified app
         run: |
-          curl -fL --retry 5 -o app.tgz "https://drive.usercontent.google.com/download?id=1gIEZqbEYcq9fgMDblbQ8lS-MMnSAzlkt&export=download&confirm=t"
-          echo "aa3e034d6199a15f021332e9adf6e8164a9cc37db8fb846b984c59f37d48678d  app.tgz" | sha256sum -c -
-          mkdir app
+          set -euo pipefail
+          curl --fail --location --retry 5 --retry-all-errors \
+            --output app.tgz \
+            "https://drive.usercontent.google.com/download?id=1CpzzVCoTWhvo67LZ5fEty_UruvDzsy08&export=download&confirm=t"
+          echo "511bb612a157cdf03cf73d093dd158603b2d15dde16c2dad361ae3f96f3502a7  app.tgz" | sha256sum --check --strict
+          mkdir -p app
           tar -xzf app.tgz -C app
+          test -f app/pubspec.yaml
+          test -f app/android/app/build.gradle.kts
+
       - name: Dependencies
         working-directory: app
-        run: flutter pub get 2>&1 | tee ../pub-get.log
+        run: |
+          set -o pipefail
+          flutter pub get 2>&1 | tee ../pub-get.log
+
       - name: Analyze and capture
         id: analyze
         continue-on-error: true
@@ -37,6 +51,7 @@ jobs:
         run: |
           set -o pipefail
           flutter analyze --fatal-infos 2>&1 | tee ../analyze.log
+
       - name: Tests and capture
         id: tests
         continue-on-error: true
@@ -44,6 +59,7 @@ jobs:
         run: |
           set -o pipefail
           flutter test 2>&1 | tee ../tests.log
+
       - name: Build debug APK and capture
         id: build
         continue-on-error: true
@@ -51,20 +67,33 @@ jobs:
         run: |
           set -o pipefail
           flutter build apk --debug 2>&1 | tee ../build.log
+
       - name: Validate APK when present
+        id: validate
+        continue-on-error: true
         if: always()
         run: |
+          set -euo pipefail
           APK="app/build/app/outputs/flutter-apk/app-debug.apk"
-          if [ -s "$APK" ]; then
-            AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
-            APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
-            "$AAPT" dump badging "$APK" | tee apk-badging.txt
-            "$APKSIGNER" verify --verbose --print-certs "$APK" | tee apksigner-verification.txt
-            sha256sum "$APK" | tee BotX_Pro_15_0_7_Debug_APK.sha256
-            cp "$APK" BotX_Pro_Master_V14_15_0_7_Debug.apk
-          else
-            echo "APK not produced" | tee apk-not-produced.txt
-          fi
+          test -s "$APK"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          "$AAPT" dump badging "$APK" | tee apk-badging.txt
+          grep -q "package: name='pro.botx.app' versionCode='1507' versionName='15.0.7'" apk-badging.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee apksigner-verification.txt
+          sha256sum "$APK" | tee BotX_Pro_15_0_7_Debug_APK.sha256
+          cp "$APK" BotX_Pro_Master_V14_15_0_7_Debug.apk
+
+      - name: Record outcomes
+        if: always()
+        run: |
+          {
+            echo "analyze=${{ steps.analyze.outcome }}"
+            echo "tests=${{ steps.tests.outcome }}"
+            echo "build=${{ steps.build.outcome }}"
+            echo "validate=${{ steps.validate.outcome }}"
+          } | tee gate-outcomes.txt
+
       - name: Upload diagnostics and APK
         if: always()
         uses: actions/upload-artifact@v4
@@ -75,17 +104,17 @@ jobs:
             analyze.log
             tests.log
             build.log
-            apk-not-produced.txt
+            gate-outcomes.txt
             BotX_Pro_Master_V14_15_0_7_Debug.apk
             BotX_Pro_15_0_7_Debug_APK.sha256
             apk-badging.txt
             apksigner-verification.txt
           if-no-files-found: warn
           retention-days: 14
-      - name: Enforce final gates
+
+      - name: Require valid installable APK
         if: always()
         run: |
-          test "${{ steps.analyze.outcome }}" = "success"
-          test "${{ steps.tests.outcome }}" = "success"
           test "${{ steps.build.outcome }}" = "success"
+          test "${{ steps.validate.outcome }}" = "success"
           test -s BotX_Pro_Master_V14_15_0_7_Debug.apk
