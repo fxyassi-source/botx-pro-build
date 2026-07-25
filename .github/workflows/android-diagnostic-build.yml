@@ -26,7 +26,7 @@ jobs:
       - name: Stage verified app
         run: |
           curl -fL --retry 5 -o app.tgz "https://drive.usercontent.google.com/download?id=1gIEZqbEYcq9fgMDblbQ8lS-MMnSAzlkt&export=download&confirm=t"
-          echo "511bb612a157cdf03cf73d093dd158603b2d15dde16c2dad361ae3f96f3502a7  app.tgz" | sha256sum -c -
+          echo "aa3e034d6199a15f021332e9adf6e8164a9cc37db8fb846b984c59f37d48678d  app.tgz" | sha256sum -c -
           mkdir app
           tar -xzf app.tgz -C app
       - name: Dependencies
