@@ -12,3 +12,5 @@ Expected gates:
 - flutter build apk --debug
 - package/version/signature verification
 - APK artifact upload
+
+Diagnostic rerun: capture analyzer, test, and build logs while preserving final gate enforcement.
