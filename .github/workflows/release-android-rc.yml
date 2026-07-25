@@ -19,7 +19,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       SOURCE_FILE_ID: 1CpzzVCoTWhvo67LZ5fEty_UruvDzsy08
-      SOURCE_SHA256: 059e07f491b62a78e696a5e46273e03c54367f344fcf5f9e72ef591508c47677
+      SOURCE_SHA256: d1798e0a0926f0e1656790c3b456cd640cac6397f91f607e0c0a1228146ebbc0
       SIGNING_TAG: botx-android-signing-v1
 
     steps:
@@ -51,7 +51,17 @@ jobs:
           test -f app/pubspec.yaml
           test -f app/android/app/build.gradle.kts
           test -f app/lib/features/auth/auth_gate.dart
-          ! grep -R -E 'webview_flutter|InAppWebView|WebViewWidget|loadHtmlString' app/lib app/pubspec.yaml
+          ! grep -R -E 'webview_flutter|flutter_inappwebview|InAppWebView|WebViewWidget|WebViewController|loadHtmlString' app/lib app/pubspec.yaml app/assets
+
+      - name: Verify V55 native visual lock
+        run: |
+          set -euo pipefail
+          test -f app/lib/core/theme/botx_palette.dart
+          test -f app/lib/features/shell/native_botx_shell.dart
+          test -f app/lib/shared/widgets/botx_card.dart
+          test -f app/assets/images/terminal_card_bg.png
+          test -f app/assets/images/brand_logo.png
+          ! find app/assets -type f \( -iname '*.html' -o -iname '*.htm' \) -print -quit | grep -q .
 
       - name: Restore or create persistent Android release signing identity
         run: |
@@ -107,48 +117,26 @@ jobs:
         working-directory: app
         run: flutter pub get
 
-      - name: Analyze release source and capture log
-        id: analyze
-        continue-on-error: true
+      - name: Analyze release source
         working-directory: app
-        run: |
-          set -o pipefail
-          flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1 | tee ../analyze.log
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
-      - name: Run Flutter tests and capture log
-        id: tests
-        continue-on-error: true
+      - name: Run Flutter tests
         working-directory: app
-        run: |
-          set -o pipefail
-          flutter test 2>&1 | tee ../tests.log
+        run: flutter test
 
       - name: Build signed release APKs and AAB
-        id: build
-        continue-on-error: true
         working-directory: app
         run: |
-          set -o pipefail
-          {
-            flutter build apk --release --split-per-abi \
-              --build-name=15.0.7 --build-number=1508 \
-              --dart-define=BOTX_ENV=release-candidate
-            flutter build appbundle --release \
-              --build-name=15.0.7 --build-number=1508 \
-              --dart-define=BOTX_ENV=release-candidate
-          } 2>&1 | tee ../build-release.log
-
-      - name: Record quality outcomes
-        if: always()
-        run: |
-          {
-            echo "analyze=${{ steps.analyze.outcome }}"
-            echo "tests=${{ steps.tests.outcome }}"
-            echo "build=${{ steps.build.outcome }}"
-          } | tee quality-gates.txt
+          set -euo pipefail
+          flutter build apk --release --split-per-abi \
+            --build-name=15.0.7 --build-number=1508 \
+            --dart-define=BOTX_ENV=release-candidate
+          flutter build appbundle --release \
+            --build-name=15.0.7 --build-number=1508 \
+            --dart-define=BOTX_ENV=release-candidate
 
       - name: Validate identity, release signature and package metadata
-        if: always()
         run: |
           set -euo pipefail
           mkdir -p dist
@@ -168,16 +156,15 @@ jobs:
           AAPT="$(find "${ANDROID_HOME}/build-tools" -type f -name aapt | sort -V | tail -1)"
           APKSIGNER="$(find "${ANDROID_HOME}/build-tools" -type f -name apksigner | sort -V | tail -1)"
           "${AAPT}" dump badging "${ARM64}" | tee dist/apk-badging-arm64.txt
-          grep -q "package: name='pro.botx.app' versionCode='1508' versionName='15.0.7'" dist/apk-badging-arm64.txt
+          grep -q "package: name='pro.botx.app' versionCode='3508' versionName='15.0.7'" dist/apk-badging-arm64.txt
           "${APKSIGNER}" verify --verbose --print-certs "${ARM64}" | tee dist/apksigner-arm64.txt
           grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' dist/apksigner-arm64.txt
           sha256sum dist/*.apk dist/*.aab | tee dist/SHA256SUMS.txt
 
-      - name: Upload signed release artifacts and diagnostics
-        if: always()
+      - name: Upload signed release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: BotX-Pro-15.0.7-RC1508-Signed-Release
+          name: BotX-Pro-15.0.7-RC1508-Signed-Release-Final
           path: |
             dist/BotX_Pro_Master_V14_15_0_7_RC1508_ARM64_Release.apk
             dist/BotX_Pro_Master_V14_15_0_7_RC1508_ARMv7_Release.apk
@@ -187,15 +174,10 @@ jobs:
             dist/apk-badging-arm64.txt
             dist/apksigner-arm64.txt
             dist/signing-certificate-summary.txt
-            analyze.log
-            tests.log
-            build-release.log
-            quality-gates.txt
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
 
       - name: Upload private signing backup
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: BotX-Pro-Android-Signing-Backup-v1
