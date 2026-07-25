@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 60
     env:
       SOURCE_FILE_ID: 1CpzzVCoTWhvo67LZ5fEty_UruvDzsy08
-      SOURCE_SHA256: 3f9632b7998ad32fd1c870d2bd6b8ee3b7714b08e3bdc15ee173d786bb24a53b
+      SOURCE_SHA256: 58491346ec7771c9a365de77033481687540dec0c9736ae2c8a56c632697e4c4
       APP_VERSION: 56.0.0+5600
       APP_PACKAGE: pro.botx.app
     steps:
@@ -121,6 +121,7 @@ jobs:
             test/api_client_security_test.dart \
             test/v56_ui_smoke_test.dart \
             test/local_demo_engine_test.dart \
+            test/chart_datafeed_contract_test.dart \
             2>&1 | tee "$RUNNER_TEMP/flutter-tests.log"
 
       - name: Capture V56 phone screenshots
@@ -161,8 +162,8 @@ jobs:
           strings "$APK" | grep -qv 'sk-[A-Za-z0-9]'
           strings "$APK" | grep -qv 'gsk_[A-Za-z0-9]'
           sha256sum "$APK" "$AAB" | tee "$GITHUB_WORKSPACE/app/BotX_Pro_V56_ANDROID_SHA256SUMS.txt"
-          cp "$APK" "$GITHUB_WORKSPACE/app/BotX_Pro_V56_ARM64_Release_Candidate.apk"
-          cp "$AAB" "$GITHUB_WORKSPACE/app/BotX_Pro_V56_Release_Candidate.aab"
+          cp "$APK" "$GITHUB_WORKSPACE/app/BotX_Pro_V56_ARM64_Demo_Trading_RC.apk"
+          cp "$AAB" "$GITHUB_WORKSPACE/app/BotX_Pro_V56_Demo_Trading_RC.aab"
 
       - name: Upload diagnostics
         if: always()
@@ -189,8 +190,8 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: botx-pro-v56-android-release-candidate
+          name: botx-pro-v56-demo-android-release-candidate
           path: |
-            app/BotX_Pro_V56_ARM64_Release_Candidate.apk
-            app/BotX_Pro_V56_Release_Candidate.aab
+            app/BotX_Pro_V56_ARM64_Demo_Trading_RC.apk
+            app/BotX_Pro_V56_Demo_Trading_RC.aab
             app/BotX_Pro_V56_ANDROID_SHA256SUMS.txt
