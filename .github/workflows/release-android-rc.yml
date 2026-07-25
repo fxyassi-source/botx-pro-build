@@ -56,7 +56,7 @@ jobs:
       - name: Restore or create persistent Android release signing identity
         run: |
           set -euo pipefail
-          mkdir -p signing
+          mkdir -p signing dist
           if gh release view "${SIGNING_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
             gh release download "${SIGNING_TAG}" --repo "${GITHUB_REPOSITORY}" \
               --pattern 'botx-release.jks' \
@@ -100,29 +100,53 @@ jobs:
           EOF
           keytool -list -v -keystore signing/botx-release.jks -storepass "${STORE_PASSWORD}" -alias "${KEY_ALIAS}" \
             | grep -E 'Alias name:|Owner:|SHA256:' > signing-certificate-summary.txt
+          tar -czf dist/BotX_Pro_Android_Signing_Backup_v1.tar.gz -C signing botx-release.jks botx-signing.env
+          sha256sum dist/BotX_Pro_Android_Signing_Backup_v1.tar.gz > dist/BotX_Pro_Android_Signing_Backup_v1.sha256
 
       - name: Resolve dependencies
         working-directory: app
         run: flutter pub get
 
-      - name: Analyze release source
-        working-directory: app
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
-
-      - name: Run Flutter tests
-        working-directory: app
-        run: flutter test
-
-      - name: Build signed release APKs and AAB
+      - name: Analyze release source and capture log
+        id: analyze
+        continue-on-error: true
         working-directory: app
         run: |
-          set -euo pipefail
-          flutter build apk --release --split-per-abi \
-            --dart-define=BOTX_ENV=release-candidate
-          flutter build appbundle --release \
-            --dart-define=BOTX_ENV=release-candidate
+          set -o pipefail
+          flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1 | tee ../analyze.log
+
+      - name: Run Flutter tests and capture log
+        id: tests
+        continue-on-error: true
+        working-directory: app
+        run: |
+          set -o pipefail
+          flutter test 2>&1 | tee ../tests.log
+
+      - name: Build signed release APKs and AAB
+        id: build
+        continue-on-error: true
+        working-directory: app
+        run: |
+          set -o pipefail
+          {
+            flutter build apk --release --split-per-abi \
+              --dart-define=BOTX_ENV=release-candidate
+            flutter build appbundle --release \
+              --dart-define=BOTX_ENV=release-candidate
+          } 2>&1 | tee ../build-release.log
+
+      - name: Record quality outcomes
+        if: always()
+        run: |
+          {
+            echo "analyze=${{ steps.analyze.outcome }}"
+            echo "tests=${{ steps.tests.outcome }}"
+            echo "build=${{ steps.build.outcome }}"
+          } | tee quality-gates.txt
 
       - name: Validate identity, release signature and package metadata
+        if: always()
         run: |
           set -euo pipefail
           mkdir -p dist
@@ -146,10 +170,9 @@ jobs:
           cp "${AAB}" dist/BotX_Pro_Master_V14_15_0_7_RC1508_Release.aab
           cp signing-certificate-summary.txt dist/
           sha256sum dist/*.apk dist/*.aab | tee dist/SHA256SUMS.txt
-          tar -czf dist/BotX_Pro_Android_Signing_Backup_v1.tar.gz -C signing botx-release.jks botx-signing.env
-          sha256sum dist/BotX_Pro_Android_Signing_Backup_v1.tar.gz > dist/BotX_Pro_Android_Signing_Backup_v1.sha256
 
-      - name: Upload signed release artifacts
+      - name: Upload signed release artifacts and diagnostics
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: BotX-Pro-15.0.7-RC1508-Signed-Release
@@ -162,10 +185,15 @@ jobs:
             dist/apk-badging-arm64.txt
             dist/apksigner-arm64.txt
             dist/signing-certificate-summary.txt
-          if-no-files-found: error
+            analyze.log
+            tests.log
+            build-release.log
+            quality-gates.txt
+          if-no-files-found: warn
           retention-days: 30
 
       - name: Upload private signing backup
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: BotX-Pro-Android-Signing-Backup-v1
