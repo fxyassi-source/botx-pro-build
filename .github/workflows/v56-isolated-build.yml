@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 60
     env:
       SOURCE_FILE_ID: 1CpzzVCoTWhvo67LZ5fEty_UruvDzsy08
-      SOURCE_SHA256: e53bab3e28647d3d0ee550a1b46382ac84e4e8e229aaed15935dfb6415021d13
+      SOURCE_SHA256: 3f9632b7998ad32fd1c870d2bd6b8ee3b7714b08e3bdc15ee173d786bb24a53b
       APP_VERSION: 56.0.0+5600
       APP_PACKAGE: pro.botx.app
     steps:
