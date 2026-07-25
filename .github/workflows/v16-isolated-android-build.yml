@@ -62,6 +62,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p dist
           python3 - <<'PY'
           from pathlib import Path
           p = Path('app/android/gradle.properties')
@@ -107,7 +108,19 @@ jobs:
 
       - name: Strict Flutter analyze
         working-directory: app
-        run: flutter analyze --fatal-infos
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter analyze --fatal-infos 2>&1 | tee ../dist/flutter-analyze.log
+
+      - name: Upload analyze diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BotX-Pro-V16-Flutter-Analyze-Diagnostics
+          path: dist/flutter-analyze.log
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Run Flutter tests
         working-directory: app
@@ -129,7 +142,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p dist
           APK='app/build/app/outputs/flutter-apk/app-release.apk'
           AAB='app/build/app/outputs/bundle/release/app-release.aab'
           test -s "${APK}"
