@@ -84,7 +84,12 @@ jobs:
           """
           if old not in source:
               raise SystemExit('V56 test harness patch target not found')
-          path.write_text(source.replace(old, new))
+          source = source.replace(old, new)
+          source = source.replace(
+              "    expect(find.text('BotXPro'), findsOneWidget);\n    expect(find.text('Swipe accounts'), findsOneWidget);",
+              "    expect(find.byKey(const ValueKey('v56_account_carousel')), findsOneWidget);\n    expect(find.text('Swipe accounts'), findsOneWidget);",
+          )
+          path.write_text(source)
           PY
 
       - name: Configure ephemeral release-candidate signing
