@@ -19,7 +19,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       SOURCE_FILE_ID: 1CpzzVCoTWhvo67LZ5fEty_UruvDzsy08
-      SOURCE_SHA256: 64c09fe610dfed5f073d7a75f5b84e341b6fa075da88fbb911b6a59b86c4334e
+      SOURCE_SHA256: d680f5a2ff50cee6e2fa9edfe15fab192853b81fed3b2dca48161e1553fa65c0
       SIGNING_TAG: botx-android-signing-v1
 
     steps:
