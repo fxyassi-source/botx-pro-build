@@ -30,11 +30,6 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Install required Android NDK
-        run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "ndk;27.0.12077973"
-
       - name: Download verified private build source
         run: |
           curl --fail --location --retry 5 --retry-all-errors \
