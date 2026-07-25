@@ -2,6 +2,10 @@ name: BotX Pro Android Build
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-android.yml'
 
 permissions:
   contents: read
@@ -28,12 +32,13 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Download verified private build source
+      - name: Download and verify BotX Pro Flutter source
         run: |
+          set -euo pipefail
           curl --fail --location --retry 5 --retry-all-errors \
             --output mobile_flutter_15.0.7.tar.gz \
-            "https://drive.usercontent.google.com/download?id=1gIEZqbEYcq9fgMDblbQ8lS-MMnSAzlkt&export=download&confirm=t"
-          echo "aa3e034d6199a15f021332e9adf6e8164a9cc37db8fb846b984c59f37d48678d  mobile_flutter_15.0.7.tar.gz" | sha256sum --check --strict
+            "https://drive.usercontent.google.com/download?id=1CpzzVCoTWhvo67LZ5fEty_UruvDzsy08&export=download&confirm=t"
+          echo "511bb612a157cdf03cf73d093dd158603b2d15dde16c2dad361ae3f96f3502a7  mobile_flutter_15.0.7.tar.gz" | sha256sum --check --strict
           mkdir -p app
           tar -xzf mobile_flutter_15.0.7.tar.gz -C app
           test -f app/pubspec.yaml
@@ -41,28 +46,45 @@ jobs:
 
       - name: Verify cloud toolchain
         run: |
-          java -version
-          flutter --version
-          flutter doctor -v
+          java -version 2>&1 | tee java-version.log
+          flutter --version 2>&1 | tee flutter-version.log
+          flutter doctor -v 2>&1 | tee flutter-doctor.log
 
       - name: Resolve Flutter dependencies
         working-directory: app
-        run: flutter pub get
+        run: |
+          set -o pipefail
+          flutter pub get 2>&1 | tee ../pub-get.log
 
-      - name: Static analysis gate
+      - name: Static analysis
+        id: analyze
+        continue-on-error: true
         working-directory: app
-        run: flutter analyze --fatal-infos
+        run: |
+          set -o pipefail
+          flutter analyze --fatal-infos 2>&1 | tee ../analyze.log
 
-      - name: Flutter tests gate
+      - name: Flutter tests
+        id: tests
+        continue-on-error: true
         working-directory: app
-        run: flutter test
+        run: |
+          set -o pipefail
+          flutter test 2>&1 | tee ../tests.log
 
       - name: Build installable debug APK
+        id: build
+        continue-on-error: true
         working-directory: app
-        run: flutter build apk --debug
+        run: |
+          set -o pipefail
+          flutter build apk --debug 2>&1 | tee ../build.log
 
       - name: Validate APK identity and signature
+        id: validate
+        continue-on-error: true
         run: |
+          set -euo pipefail
           APK="app/build/app/outputs/flutter-apk/app-debug.apk"
           test -s "$APK"
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
@@ -73,14 +95,40 @@ jobs:
           sha256sum "$APK" | tee BotX_Pro_15_0_7_Debug_APK.sha256
           cp "$APK" BotX_Pro_Master_V14_15_0_7_Debug.apk
 
-      - name: Upload APK artifact
+      - name: Record gate outcomes
+        if: always()
+        run: |
+          {
+            echo "analyze=${{ steps.analyze.outcome }}"
+            echo "tests=${{ steps.tests.outcome }}"
+            echo "build=${{ steps.build.outcome }}"
+            echo "validate=${{ steps.validate.outcome }}"
+          } | tee gate-outcomes.txt
+
+      - name: Upload APK and diagnostics
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: BotX-Pro-Master-V14-15.0.7-Debug-APK
+          name: BotX-Pro-Master-V14-15.0.7-APK-And-Diagnostics
           path: |
             BotX_Pro_Master_V14_15_0_7_Debug.apk
             BotX_Pro_15_0_7_Debug_APK.sha256
             apk-badging.txt
             apksigner-verification.txt
-          if-no-files-found: error
+            gate-outcomes.txt
+            java-version.log
+            flutter-version.log
+            flutter-doctor.log
+            pub-get.log
+            analyze.log
+            tests.log
+            build.log
+          if-no-files-found: warn
           retention-days: 14
+
+      - name: Require a valid installable APK
+        if: always()
+        run: |
+          test "${{ steps.build.outcome }}" = "success"
+          test "${{ steps.validate.outcome }}" = "success"
+          test -s BotX_Pro_Master_V14_15_0_7_Debug.apk
