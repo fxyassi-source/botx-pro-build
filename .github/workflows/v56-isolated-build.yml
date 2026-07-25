@@ -141,11 +141,17 @@ jobs:
 
       - name: Build ARM64 APK
         working-directory: app
-        run: flutter build apk --release --target-platform android-arm64 --dart-define=ALLOW_LIVE_MODE=false
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter build apk --release --target-platform android-arm64 --dart-define=ALLOW_LIVE_MODE=false 2>&1 | tee "$RUNNER_TEMP/flutter-apk-build.log"
 
       - name: Build Android App Bundle
         working-directory: app
-        run: flutter build appbundle --release --dart-define=ALLOW_LIVE_MODE=false
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter build appbundle --release --dart-define=ALLOW_LIVE_MODE=false 2>&1 | tee "$RUNNER_TEMP/flutter-aab-build.log"
 
       - name: Validate Android release candidate
         working-directory: app
@@ -175,6 +181,8 @@ jobs:
             ${{ runner.temp }}/flutter-analyze.log
             ${{ runner.temp }}/flutter-tests.log
             ${{ runner.temp }}/flutter-visual.log
+            ${{ runner.temp }}/flutter-apk-build.log
+            ${{ runner.temp }}/flutter-aab-build.log
             ${{ runner.temp }}/apksigner.log
 
       - name: Upload screenshots
