@@ -1,0 +1,3 @@
+BotX Pro Master V14 15.0.7 RC1508 final signed Android build.
+Source SHA-256: d1798e0a0926f0e1656790c3b456cd640cac6397f91f607e0c0a1228146ebbc0
+V55 native Flutter UI locked; no Android HTML/WebView runtime.
