@@ -1,0 +1,172 @@
+name: BotX Pro V16 Isolated Android Build
+
+on:
+  push:
+    branches:
+      - v16-isolated-apk-build
+    paths:
+      - '.github/workflows/v16-isolated-android-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build-v16:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      SOURCE_FILE_ID: 1gIEZqbEYcq9fgMDblbQ8lS-MMnSAzlkt
+      SOURCE_SHA256: 44064c057f6e674cd1cd5d4e284959fe761441958486786de0fbe7e2ef9f1f2e
+      EXPECTED_PACKAGE: pro.botx.app
+      EXPECTED_VERSION_NAME: 16.0.0
+      EXPECTED_VERSION_CODE: '1600'
+
+    steps:
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Flutter 3.44.7
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.7'
+          channel: stable
+          cache: true
+
+      - name: Download and verify V16 source only
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 8 --retry-all-errors \
+            --output app.tar.gz \
+            "https://drive.usercontent.google.com/download?id=${SOURCE_FILE_ID}&export=download&confirm=t"
+          echo "${SOURCE_SHA256}  app.tar.gz" | sha256sum --check --strict
+          mkdir app
+          tar -xzf app.tar.gz -C app
+          test -f app/pubspec.yaml
+          test -f app/lib/main.dart
+          test -f app/android/app/build.gradle.kts
+          grep -Eq '^version: 16\.0\.0\+1600$' app/pubspec.yaml
+          grep -q 'V16NativeShell' app/lib/main.dart
+          ! grep -R -E 'webview_flutter|InAppWebView|WebViewWidget|loadHtmlString' app/lib app/pubspec.yaml
+          ! grep -R -E 'RC1508|Base21|15\.0\.7' app/lib app/pubspec.yaml app/android
+
+      - name: Install pinned Android NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager "ndk;27.0.12077973"
+
+      - name: Configure isolated build resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/android/gradle.properties')
+          text = p.read_text()
+          lines = []
+          for line in text.splitlines():
+              if line.startswith('org.gradle.jvmargs='):
+                  lines.append('org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8')
+              elif line.startswith('org.gradle.workers.max='):
+                  lines.append('org.gradle.workers.max=2')
+              elif line.startswith('kotlin.daemon.jvmargs='):
+                  lines.append('kotlin.daemon.jvmargs=-Xmx1g')
+              else:
+                  lines.append(line)
+          p.write_text('\n'.join(lines) + '\n')
+          PY
+
+      - name: Create ephemeral release-candidate signing identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          STORE_PASSWORD="$(openssl rand -hex 24)"
+          KEY_PASSWORD="$(openssl rand -hex 24)"
+          echo "::add-mask::${STORE_PASSWORD}"
+          echo "::add-mask::${KEY_PASSWORD}"
+          keytool -genkeypair -v \
+            -keystore app/android/app/botx-v16-rc.jks \
+            -storetype JKS \
+            -storepass "${STORE_PASSWORD}" \
+            -alias botxv16rc \
+            -keypass "${KEY_PASSWORD}" \
+            -keyalg RSA \
+            -keysize 4096 \
+            -validity 3650 \
+            -dname 'CN=BotX Pro V16 RC, OU=Android Test Release, O=BotX AI Innovation, L=Faridabad, ST=Haryana, C=IN'
+          cat > app/android/key.properties <<EOF
+          storeFile=botx-v16-rc.jks
+          storePassword=${STORE_PASSWORD}
+          keyAlias=botxv16rc
+          keyPassword=${KEY_PASSWORD}
+          EOF
+
+      - name: Resolve Flutter dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: Strict Flutter analyze
+        working-directory: app
+        run: flutter analyze --fatal-infos
+
+      - name: Run Flutter tests
+        working-directory: app
+        run: flutter test
+
+      - name: Build signed ARM64 APK and AAB with live mode disabled
+        working-directory: app
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter build apk --release --target-platform android-arm64 \
+            --dart-define=ALLOW_LIVE_MODE=false \
+            --dart-define=BOTX_ENV=release-candidate
+          flutter build appbundle --release \
+            --dart-define=ALLOW_LIVE_MODE=false \
+            --dart-define=BOTX_ENV=release-candidate
+
+      - name: Validate package, version, signature and security flags
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          APK='app/build/app/outputs/flutter-apk/app-release.apk'
+          AAB='app/build/app/outputs/bundle/release/app-release.aab'
+          test -s "${APK}"
+          test -s "${AAB}"
+          AAPT="$(find "${ANDROID_HOME}/build-tools" -type f -name aapt | sort -V | tail -1)"
+          APKSIGNER="$(find "${ANDROID_HOME}/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          APKANALYZER="$(find "${ANDROID_HOME}/cmdline-tools" -type f -name apkanalyzer | head -1)"
+          "${AAPT}" dump badging "${APK}" | tee dist/apk-badging.txt
+          grep -q "package: name='${EXPECTED_PACKAGE}' versionCode='${EXPECTED_VERSION_CODE}' versionName='${EXPECTED_VERSION_NAME}'" dist/apk-badging.txt
+          "${APKSIGNER}" verify --verbose --print-certs "${APK}" | tee dist/apksigner.txt
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' dist/apksigner.txt
+          "${APKANALYZER}" manifest print "${APK}" | tee dist/AndroidManifest.xml
+          grep -q 'android:usesCleartextTraffic="false"' dist/AndroidManifest.xml
+          ! grep -q 'android:debuggable="true"' dist/AndroidManifest.xml
+          strings "${APK}" > dist/apk-strings.txt
+          ! grep -E '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----|sk-[A-Za-z0-9_-]{20,}|gsk_[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{30,}' dist/apk-strings.txt
+          rm -f dist/apk-strings.txt
+          cp "${APK}" dist/BotX_Pro_V16_ARM64_Release_Candidate.apk
+          cp "${AAB}" dist/BotX_Pro_V16_Release_Candidate.aab
+          sha256sum dist/*.apk dist/*.aab | tee dist/SHA256SUMS.txt
+
+      - name: Upload V16 Android artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: BotX-Pro-V16-Isolated-Android-Release-Candidate
+          path: |
+            dist/BotX_Pro_V16_ARM64_Release_Candidate.apk
+            dist/BotX_Pro_V16_Release_Candidate.aab
+            dist/SHA256SUMS.txt
+            dist/apk-badging.txt
+            dist/apksigner.txt
+            dist/AndroidManifest.xml
+          if-no-files-found: error
+          retention-days: 30
