@@ -1,2 +1,3 @@
 Trigger observable BotX Pro Master V14 Android APK build for technical version 15.0.7.
-Source SHA-256: 511bb612a157cdf03cf73d093dd158603b2d15dde16c2dad361ae3f96f3502a7
+Patched source SHA-256: ee36c56bd986df95c8f80f2b258780ddd0537b05f7fa2679e355edb0c5a8022e
+Fix: type-safe numeric conversion in market_screen.dart only.
