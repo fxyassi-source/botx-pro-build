@@ -116,7 +116,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          flutter test --reporter expanded \
+          flutter test --concurrency=1 --reporter expanded \
             test/v16_performance_contract_test.dart \
             test/api_client_security_test.dart \
             test/v56_ui_smoke_test.dart \
