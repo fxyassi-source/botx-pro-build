@@ -2,3 +2,4 @@ BotX Pro Master V14 technical version 15.0.7 Android cloud build trigger.
 Source archive SHA-256: 511bb612a157cdf03cf73d093dd158603b2d15dde16c2dad361ae3f96f3502a7
 Expected package: pro.botx.app
 Expected version: 15.0.7+1507
+Run attempt: 2
