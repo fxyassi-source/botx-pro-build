@@ -58,12 +58,6 @@ jobs:
           test ! -e app/lib/app_shell.dart
           test ! -e app/lib/features/dashboard/dashboard_screen.dart
 
-      - name: Install pinned Android NDK
-        shell: bash
-        run: |
-          set -euo pipefail
-          yes | sdkmanager "ndk;27.0.12077973"
-
       - name: Configure isolated build resources
         shell: bash
         run: |
