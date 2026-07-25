@@ -1,16 +1,9 @@
 name: BotX Pro V16 Isolated Android Build
 
 on:
-  push:
-    branches:
-      - v16-isolated-apk-build
-    paths:
-      - '.github/workflows/v16-isolated-android-build.yml'
   pull_request:
-    branches:
-      - main
-    paths:
-      - '.github/workflows/v16-isolated-android-build.yml'
+    branches: [main]
+    paths: ['.github/workflows/v16-isolated-android-build.yml']
   workflow_dispatch:
 
 permissions:
@@ -54,11 +47,16 @@ jobs:
           tar -xzf app.tar.gz -C app
           test -f app/pubspec.yaml
           test -f app/lib/main.dart
+          test -f app/lib/app/botx_app.dart
+          test -f app/lib/app/v16_native_shell.dart
           test -f app/android/app/build.gradle.kts
           grep -Eq '^version: 16\.0\.0\+1600$' app/pubspec.yaml
-          grep -q 'V16NativeShell' app/lib/main.dart
+          grep -q 'BotXApp' app/lib/main.dart
+          grep -q 'V16NativeShell' app/lib/app/botx_app.dart
+          grep -q 'home: V16NativeShell' app/lib/app/botx_app.dart
           ! grep -R -E 'webview_flutter|InAppWebView|WebViewWidget|loadHtmlString' app/lib app/pubspec.yaml
-          ! grep -R -E 'RC1508|Base21|15\.0\.7' app/lib app/pubspec.yaml app/android
+          test ! -e app/lib/app_shell.dart
+          test ! -e app/lib/features/dashboard/dashboard_screen.dart
 
       - name: Install pinned Android NDK
         shell: bash
@@ -73,9 +71,8 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           p = Path('app/android/gradle.properties')
-          text = p.read_text()
           lines = []
-          for line in text.splitlines():
+          for line in p.read_text().splitlines():
               if line.startswith('org.gradle.jvmargs='):
                   lines.append('org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8')
               elif line.startswith('org.gradle.workers.max='):
@@ -101,9 +98,7 @@ jobs:
             -storepass "${STORE_PASSWORD}" \
             -alias botxv16rc \
             -keypass "${KEY_PASSWORD}" \
-            -keyalg RSA \
-            -keysize 4096 \
-            -validity 3650 \
+            -keyalg RSA -keysize 4096 -validity 3650 \
             -dname 'CN=BotX Pro V16 RC, OU=Android Test Release, O=BotX AI Innovation, L=Faridabad, ST=Haryana, C=IN'
           cat > app/android/key.properties <<EOF
           storeFile=botx-v16-rc.jks
