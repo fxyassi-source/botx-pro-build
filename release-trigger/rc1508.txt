@@ -1,4 +1,4 @@
 BotX Pro Master V14 Android signed release candidate 15.0.7 build 1508.
-Source SHA-256: 32e95e55a6963bc1e70392e55a04a67252c00f628362258b94dccad771e3119e
-Correction: strict native UI tests clean and Android release lint metaspace increased.
-Build mode: signed release with retained analyze, test and compile diagnostics.
+Source SHA-256: 059e07f491b62a78e696a5e46273e03c54367f344fcf5f9e72ef591508c47677
+Final clean-up: versionCode 1508 locked, preview test timer-safe, duplicate contract declaration removed.
+Build mode: persistent signed release with retained analyzer, tests and compile diagnostics.
