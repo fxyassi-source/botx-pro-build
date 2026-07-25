@@ -61,12 +61,20 @@ jobs:
           from pathlib import Path
           path = Path('test/v56_ui_smoke_test.dart')
           source = path.read_text()
-          old = """    await tester.pumpWidget(BotXApp(config: offlineConfig));
+          if "package:flutter_secure_storage/flutter_secure_storage.dart" not in source:
+              source = source.replace(
+                  "import 'package:flutter/material.dart';\n",
+                  "import 'package:flutter/material.dart';\nimport 'package:flutter_secure_storage/flutter_secure_storage.dart';\n",
+              )
+          old = """    SharedPreferences.setMockInitialValues(const {});
+              await tester.pumpWidget(BotXApp(config: offlineConfig));
               await tester.pump(const Duration(milliseconds: 300));
 
               expect(find.byKey(const ValueKey('v56_login_skip')), findsOneWidget);
           """
-          new = """    await tester.pumpWidget(BotXApp(config: offlineConfig));
+          new = """    SharedPreferences.setMockInitialValues(const {});
+              FlutterSecureStorage.setMockInitialValues(const {});
+              await tester.pumpWidget(BotXApp(config: offlineConfig));
               final skip = find.byKey(const ValueKey('v56_login_skip'));
               for (var attempt = 0; attempt < 30 && skip.evaluate().isEmpty; attempt++) {
                 await tester.pump(const Duration(milliseconds: 100));
