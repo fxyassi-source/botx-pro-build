@@ -1,0 +1,54 @@
+name: BotX Pro V56 Logo Coverage
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  logo-coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Confirm repository app source is absent
+        run: test ! -d "$GITHUB_WORKSPACE/.git"
+
+      - name: Set up Flutter 3.44.7
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.7'
+          channel: stable
+          cache: true
+
+      - name: Download SHA-locked V56 source
+        shell: bash
+        env:
+          SOURCE_FILE_ID: 1CpzzVCoTWhvo67LZ5fEty_UruvDzsy08
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/app" "$RUNNER_TEMP/v56"
+          curl --fail --location --retry 5 --retry-delay 3 \
+            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/v56_source.sha256" \
+            --output "$RUNNER_TEMP/v56/expected.sha256"
+          EXPECTED_SHA="$(tr -d '[:space:]' < "$RUNNER_TEMP/v56/expected.sha256")"
+          [[ "$EXPECTED_SHA" =~ ^[a-f0-9]{64}$ ]]
+          curl --fail --location --retry 5 --retry-delay 3 \
+            "https://drive.usercontent.google.com/download?id=${SOURCE_FILE_ID}&export=download&confirm=t" \
+            --output "$RUNNER_TEMP/v56/source.tar.gz"
+          echo "${EXPECTED_SHA}  $RUNNER_TEMP/v56/source.tar.gz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/v56/source.tar.gz" -C "$GITHUB_WORKSPACE/app"
+
+      - name: Resolve logo dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: Analyze logo implementation
+        working-directory: app
+        run: flutter analyze --fatal-infos lib/app/market_identity_logo.dart test/market_identity_logo_test.dart
+
+      - name: Render all 204 symbol logos
+        working-directory: app
+        run: flutter test --concurrency=1 --reporter expanded test/market_identity_logo_test.dart
