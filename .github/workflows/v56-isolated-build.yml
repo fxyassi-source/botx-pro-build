@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 60
     env:
       SOURCE_FILE_ID: 1CpzzVCoTWhvo67LZ5fEty_UruvDzsy08
-      SOURCE_SHA256: 9efae8873a6fe77fc078a3393eeaf78199107fe5d9730c88b1bda1450225ae71
+      SOURCE_SHA256: f53f4fdb3fd62d8a71f1615cf080c69fb901b4a819a8cdf59db6d18e403e9d96
       APP_VERSION: 56.0.0+5600
       APP_PACKAGE: pro.botx.app
     steps:
@@ -159,6 +159,7 @@ jobs:
             test/v16_performance_contract_test.dart \
             test/api_client_security_test.dart \
             test/v56_ui_smoke_test.dart \
+            test/local_demo_engine_test.dart \
             2>&1 | tee "$RUNNER_TEMP/flutter-tests.log"
 
       - name: Capture V56 phone screenshots
