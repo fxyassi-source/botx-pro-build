@@ -14,7 +14,6 @@ jobs:
     timeout-minutes: 60
     env:
       SOURCE_FILE_ID: 1CpzzVCoTWhvo67LZ5fEty_UruvDzsy08
-      SOURCE_SHA256: c832fe980357d0444c613c47d39dd84e41cf579ca632ebd5e59dced480824620
       APP_VERSION: 56.0.0+5600
       APP_PACKAGE: pro.botx.app
     steps:
@@ -42,9 +41,14 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/v56" "$GITHUB_WORKSPACE/app"
           curl --fail --location --retry 5 --retry-delay 3 \
+            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/v56_source.sha256" \
+            --output "$RUNNER_TEMP/v56/expected.sha256"
+          EXPECTED_SHA="$(tr -d '[:space:]' < "$RUNNER_TEMP/v56/expected.sha256")"
+          [[ "$EXPECTED_SHA" =~ ^[a-f0-9]{64}$ ]]
+          curl --fail --location --retry 5 --retry-delay 3 \
             "https://drive.usercontent.google.com/download?id=${SOURCE_FILE_ID}&export=download&confirm=t" \
             --output "$RUNNER_TEMP/v56/source.tar.gz"
-          echo "${SOURCE_SHA256}  $RUNNER_TEMP/v56/source.tar.gz" | sha256sum --check --strict
+          echo "${EXPECTED_SHA}  $RUNNER_TEMP/v56/source.tar.gz" | sha256sum --check --strict
           tar -xzf "$RUNNER_TEMP/v56/source.tar.gz" -C "$GITHUB_WORKSPACE/app"
           cd "$GITHUB_WORKSPACE/app"
           grep -F "version: ${APP_VERSION}" pubspec.yaml
