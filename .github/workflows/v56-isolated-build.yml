@@ -92,6 +92,37 @@ jobs:
           path.write_text(source)
           PY
 
+      - name: Configure CI Gradle memory
+        working-directory: app
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('android/gradle.properties')
+          source = path.read_text().splitlines()
+          replacements = {
+              'org.gradle.jvmargs=': 'org.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=1536m -XX:ReservedCodeCacheSize=256m -Xss512k -XX:+UseG1GC -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8',
+              'org.gradle.workers.max=': 'org.gradle.workers.max=1',
+              'kotlin.daemon.jvmargs=': 'kotlin.daemon.jvmargs=-Xmx1024m -XX:MaxMetaspaceSize=512m -Xss512k',
+          }
+          output = []
+          seen = set()
+          for line in source:
+              replaced = False
+              for prefix, value in replacements.items():
+                  if line.startswith(prefix):
+                      output.append(value)
+                      seen.add(prefix)
+                      replaced = True
+                      break
+              if not replaced:
+                  output.append(line)
+          for prefix, value in replacements.items():
+              if prefix not in seen:
+                  output.append(value)
+          path.write_text('\n'.join(output) + '\n')
+          PY
+
       - name: Configure ephemeral release-candidate signing
         working-directory: app
         shell: bash
