@@ -2,13 +2,17 @@ name: BotX Pro Android Build
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
 
 jobs:
-  prepare:
+  build-android:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+
     steps:
       - name: Checkout build repository
         uses: actions/checkout@v4
@@ -26,13 +30,64 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Install required Android NDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "ndk;27.0.12077973"
+
+      - name: Download verified private build source
+        run: |
+          curl --fail --location --retry 5 --retry-all-errors \
+            --output mobile_flutter_15.0.7.tar.gz \
+            "https://drive.usercontent.google.com/download?id=1gIEZqbEYcq9fgMDblbQ8lS-MMnSAzlkt&export=download&confirm=t"
+          echo "511bb612a157cdf03cf73d093dd158603b2d15dde16c2dad361ae3f96f3502a7  mobile_flutter_15.0.7.tar.gz" | sha256sum --check --strict
+          mkdir -p app
+          tar -xzf mobile_flutter_15.0.7.tar.gz -C app
+          test -f app/pubspec.yaml
+          test -f app/android/app/build.gradle.kts
+
       - name: Verify cloud toolchain
         run: |
           java -version
           flutter --version
           flutter doctor -v
 
-      - name: Source staging gate
+      - name: Resolve Flutter dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: Static analysis gate
+        working-directory: app
+        run: flutter analyze --fatal-infos
+
+      - name: Flutter tests gate
+        working-directory: app
+        run: flutter test
+
+      - name: Build installable debug APK
+        working-directory: app
+        run: flutter build apk --debug
+
+      - name: Validate APK identity and signature
         run: |
-          echo 'Workflow skeleton is ready.'
-          echo 'Verified Master V14 source will be staged only after repository visibility is confirmed Private.'
+          APK="app/build/app/outputs/flutter-apk/app-debug.apk"
+          test -s "$APK"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          "$AAPT" dump badging "$APK" | tee apk-badging.txt
+          grep -q "package: name='pro.botx.app' versionCode='1507' versionName='15.0.7'" apk-badging.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee apksigner-verification.txt
+          sha256sum "$APK" | tee BotX_Pro_15_0_7_Debug_APK.sha256
+          cp "$APK" BotX_Pro_Master_V14_15_0_7_Debug.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BotX-Pro-Master-V14-15.0.7-Debug-APK
+          path: |
+            BotX_Pro_Master_V14_15_0_7_Debug.apk
+            BotX_Pro_15_0_7_Debug_APK.sha256
+            apk-badging.txt
+            apksigner-verification.txt
+          if-no-files-found: error
+          retention-days: 14
