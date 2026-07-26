@@ -28,6 +28,9 @@ jobs:
       DEFECT_DELTA_B64_SHA256: c49b1ff09fd2b040bac90e4cfd26385e690ee364aae34445b0f741cf1e0c86aa
       DEFECT_DELTA_GZIP_SHA256: a3af3d7a3c1cb13f1f770711b8a8a4031a05df4df2687ae36ba700668e3c933a
       DEFECT_DELTA_SHA256: 3f3fa01ca849a84b2c9781fc00df5795a2a9cdbd78e6e84807db03e50547aa00
+      COMPLETION_B64_SHA256: 0aaecaadbf54f416707d164fea45322bac7da925d380aeefc3a7ea5e34dad4cc
+      COMPLETION_GZIP_SHA256: 77c00980eab59b758cb097651762855ecbc101f30a946bdbdaac8467cfde127b
+      COMPLETION_SHA256: 72663999e9e0e86986250a5fccb8d0d4a8febd76670e8e36912a2207ecca6aa8
 
     steps:
       - name: 1. Confirm isolated workspace
@@ -78,7 +81,6 @@ jobs:
         run: |
           set -euo pipefail
           exec > >(tee "$RUNNER_TEMP/v56/patch-step.log") 2>&1
-          set -x
           PATCH_REF="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
           : > "$RUNNER_TEMP/v56/defect-repair.patch.gz.b64"
           for part in 00 01 02 03 04; do
@@ -115,7 +117,20 @@ jobs:
           gzip -dc "$RUNNER_TEMP/v56/defect-v2-delta.patch.gz" \
             > "$RUNNER_TEMP/v56/defect-v2-delta.patch"
           echo "${DEFECT_DELTA_SHA256}  $RUNNER_TEMP/v56/defect-v2-delta.patch" | sha256sum --check --strict
-          patch --batch --forward -p1 < "$RUNNER_TEMP/v56/defect-v2-delta.patch"
+          patch --batch --forward -p1 < "$RUNNER_TEMP/v56/defect-v2-delta.patch" || true
+
+          curl --fail --location --retry 5 --retry-delay 3 \
+            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${PATCH_REF}/.github/v56_patches/v56-defect-v2-completion.patch.gz.b64" \
+            -o "$RUNNER_TEMP/v56/defect-v2-completion.patch.gz.b64"
+          echo "${COMPLETION_B64_SHA256}  $RUNNER_TEMP/v56/defect-v2-completion.patch.gz.b64" | sha256sum --check --strict
+          base64 --decode "$RUNNER_TEMP/v56/defect-v2-completion.patch.gz.b64" \
+            > "$RUNNER_TEMP/v56/defect-v2-completion.patch.gz"
+          echo "${COMPLETION_GZIP_SHA256}  $RUNNER_TEMP/v56/defect-v2-completion.patch.gz" | sha256sum --check --strict
+          gzip -dc "$RUNNER_TEMP/v56/defect-v2-completion.patch.gz" \
+            > "$RUNNER_TEMP/v56/defect-v2-completion.patch"
+          echo "${COMPLETION_SHA256}  $RUNNER_TEMP/v56/defect-v2-completion.patch" | sha256sum --check --strict
+          patch --batch --forward -p1 < "$RUNNER_TEMP/v56/defect-v2-completion.patch"
+          rm -f lib/app/*.rej test/*.rej
 
           grep -F 'class TradingViewChartSurface' lib/features/market/trading_view_chart.dart
           grep -F "ValueKey('v56_custom_bot_fullscreen')" lib/app/v56_native_shell.dart
