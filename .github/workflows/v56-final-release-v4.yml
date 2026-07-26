@@ -20,7 +20,8 @@ jobs:
       LOGO_SHA: 55cb6efb6c0879e2cb15e235a86ae645a29123a81136f26cae302e2b97465bb8
       PERSISTENCE_SHA: 8bee1cab3afdc6fb215eccc5ee95b2836fdf597daee245323ea05b18b7058188
       DISPOSE_SHA: 31c075d5d1388b7681b6f96e7a5c391be7d408ad42f801584372c8a74cd9562c
-      UI_SHA: 7c3bdf1cb28aceb4ff93f869d94e9316d5328547039839b82e0176d9a1b389fb
+      UI_SHA: 578f213823404c5b0a0d79bc7649c00d4ba8a0da434a598244c5c345b4854277
+      VISUAL_SHA: a21c01628d5ec04e1f951bde455a9aa371d5c37557a41128de86f25fb6b59f58
 
     steps:
       - name: 1. Confirm isolated workspace
@@ -62,10 +63,11 @@ jobs:
           fetch_patch logo .github/v56_patches/v56-logo-test-optimization-v7.patch "$LOGO_SHA"
           fetch_patch persistence .github/v56_patches/v56-brokerless-demo-persistence.patch "$PERSISTENCE_SHA"
           fetch_patch dispose .github/v56_patches/v56-demo-dispose-async-fix.patch "$DISPOSE_SHA"
-          fetch_patch ui .github/v56_patches/v56-ui-smoke-test-fix-v8.patch "$UI_SHA"
+          fetch_patch ui .github/v56_patches/v56-ui-smoke-test-fix-v9.patch "$UI_SHA"
+          fetch_patch visual .github/v56_patches/v56-visual-capture-async-fix.patch "$VISUAL_SHA"
 
           cd "$GITHUB_WORKSPACE/app"
-          for name in reconstruction demo logo persistence dispose ui; do
+          for name in reconstruction demo logo persistence dispose ui visual; do
             patch --batch --forward -p1 < "$RUNNER_TEMP/v56/${name}.patch"
           done
           grep -F 'version: 56.0.0+5600' pubspec.yaml
