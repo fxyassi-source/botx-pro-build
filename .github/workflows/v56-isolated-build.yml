@@ -141,19 +141,28 @@ jobs:
           set -o pipefail
           flutter analyze --fatal-infos 2>&1 | tee "$RUNNER_TEMP/flutter-analyze.log"
 
-      - name: Flutter unit, widget, five-bot demo and logo tests
+      - name: Flutter core, UI, chart and logo tests
         working-directory: app
         shell: bash
+        timeout-minutes: 8
         run: |
           set -o pipefail
           flutter test --concurrency=1 --reporter expanded \
             test/v16_performance_contract_test.dart \
             test/api_client_security_test.dart \
             test/v56_ui_smoke_test.dart \
-            test/local_demo_engine_test.dart \
             test/chart_datafeed_contract_test.dart \
             test/market_identity_logo_test.dart \
-            2>&1 | tee "$RUNNER_TEMP/flutter-tests.log"
+            2>&1 | tee "$RUNNER_TEMP/flutter-core-tests.log"
+
+      - name: Five-bot brokerless demo lifecycle and restart tests
+        working-directory: app
+        shell: bash
+        timeout-minutes: 5
+        run: |
+          set -o pipefail
+          flutter test --concurrency=1 --reporter expanded test/local_demo_engine_test.dart \
+            2>&1 | tee "$RUNNER_TEMP/flutter-five-bot-demo-tests.log"
 
       - name: Capture seven V56 phone screenshots
         working-directory: app
@@ -203,7 +212,8 @@ jobs:
           if-no-files-found: ignore
           path: |
             ${{ runner.temp }}/flutter-analyze.log
-            ${{ runner.temp }}/flutter-tests.log
+            ${{ runner.temp }}/flutter-core-tests.log
+            ${{ runner.temp }}/flutter-five-bot-demo-tests.log
             ${{ runner.temp }}/flutter-visual.log
             ${{ runner.temp }}/flutter-apk-build.log
             ${{ runner.temp }}/flutter-aab-build.log
