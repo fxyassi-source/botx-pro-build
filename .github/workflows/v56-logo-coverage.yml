@@ -50,7 +50,7 @@ jobs:
             "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/v56_patches/v56-logo-test-optimization.patch" \
             --output "$RUNNER_TEMP/v56/logo-test-optimization.patch"
           echo "bd74e5546206dfd1c41ccf967c2ee5105a8ca9ebcfa53e3d88bbb4269b95b076  $RUNNER_TEMP/v56/demo-certification.patch" | sha256sum --check --strict
-          echo "228a95246b737836a496e5908b794c8ce12f165ad6eb7830f790e1467dfc8b97  $RUNNER_TEMP/v56/logo-test-optimization.patch" | sha256sum --check --strict
+          echo "6c32486da86bacdd5586f482c236ae0581bc43efcf9c872bf10c856f11a72a0a  $RUNNER_TEMP/v56/logo-test-optimization.patch" | sha256sum --check --strict
           cd "$GITHUB_WORKSPACE/app"
           patch --batch --forward -p1 < "$RUNNER_TEMP/v56/reconstruction.patch"
           patch --batch --forward -p1 < "$RUNNER_TEMP/v56/demo-certification.patch"
@@ -63,7 +63,11 @@ jobs:
 
       - name: Analyze logo implementation
         working-directory: app
-        run: flutter analyze --fatal-infos lib/app/market_identity_logo.dart test/market_identity_logo_test.dart
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter analyze --fatal-infos lib/app/market_identity_logo.dart test/market_identity_logo_test.dart \
+            2>&1 | tee "$RUNNER_TEMP/v56-logo-analyze.log"
 
       - name: Validate 204 contracts, renderer families and 53 broker logos
         working-directory: app
@@ -73,10 +77,12 @@ jobs:
           flutter test --concurrency=1 --reporter expanded test/market_identity_logo_test.dart \
             2>&1 | tee "$RUNNER_TEMP/v56-logo-test.log"
 
-      - name: Upload exact logo-test diagnostics
+      - name: Upload exact logo diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: v56-logo-test-diagnostics
-          if-no-files-found: error
-          path: ${{ runner.temp }}/v56-logo-test.log
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/v56-logo-analyze.log
+            ${{ runner.temp }}/v56-logo-test.log
