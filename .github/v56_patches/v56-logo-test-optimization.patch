@@ -1,14 +1,15 @@
 diff -uNr a/test/market_identity_logo_test.dart b/test/market_identity_logo_test.dart
 --- a/test/market_identity_logo_test.dart	2026-07-26 03:54:02.422486148 +0000
-+++ b/test/market_identity_logo_test.dart	2026-07-26 04:04:55.478509503 +0000
-@@ -1,5 +1,5 @@
++++ b/test/market_identity_logo_test.dart	2026-07-26 04:11:21.422523305 +0000
+@@ -1,5 +1,6 @@
  import 'dart:convert';
 -import 'dart:ui' as ui;
++import 'dart:io';
 +import 'dart:typed_data';
  
  import 'package:botx_pro_v16/app/market_identity_logo.dart';
  import 'package:flutter/material.dart';
-@@ -9,84 +9,130 @@
+@@ -9,84 +10,130 @@
  void main() {
    TestWidgetsFlutterBinding.ensureInitialized();
  
@@ -176,15 +177,16 @@ diff -uNr a/test/market_identity_logo_test.dart b/test/market_identity_logo_test
        final code = '${broker['code']}';
        final asset = brokerAssetForCode(code);
 -      if (asset == null) continue;
-+      if (asset == null || !checkedAssets.add(asset)) continue;
-       final data = await rootBundle.load(asset);
+-      final data = await rootBundle.load(asset);
 -      final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
 -      final frame = await codec.getNextFrame();
 -      expect(frame.image.width, greaterThanOrEqualTo(96), reason: '$code width');
 -      expect(frame.image.height, greaterThanOrEqualTo(96), reason: '$code height');
 -      frame.image.dispose();
 -      codec.dispose();
-+      final dimensions = _encodedImageDimensions(data);
++      if (asset == null || !checkedAssets.add(asset)) continue;
++      final bytes = await File(asset).readAsBytes();
++      final dimensions = _encodedImageDimensions(ByteData.sublistView(bytes));
 +      expect(dimensions.$1, greaterThanOrEqualTo(96), reason: '$code width');
 +      expect(dimensions.$2, greaterThanOrEqualTo(96), reason: '$code height');
      }
@@ -192,7 +194,7 @@ diff -uNr a/test/market_identity_logo_test.dart b/test/market_identity_logo_test
    });
  
    testWidgets('broker vector fallback never renders blank', (tester) async {
-@@ -107,3 +153,51 @@
+@@ -107,3 +154,51 @@
      expect(tester.takeException(), isNull);
    });
  }
