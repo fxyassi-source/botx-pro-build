@@ -50,7 +50,7 @@ diff -uNr a/test/v56_ui_smoke_test.dart b/test/v56_ui_smoke_test.dart
          controller: appController,
          themeController: themeController,
        ),
-@@ -83,31 +104,29 @@
+@@ -83,26 +104,24 @@
  
    testWidgets('Guest V56 shell creates a demo account from a virtual balance', (tester) async {
      SharedPreferences.setMockInitialValues(const {});
