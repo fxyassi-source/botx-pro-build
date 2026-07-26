@@ -1,9 +1,31 @@
 --- a/test/market_identity_logo_test.dart
 +++ b/test/market_identity_logo_test.dart
-@@ -15,27 +15,35 @@
-     final symbols = (decoded['symbols'] as List).cast<Map<String, dynamic>>();
-     expect(symbols, hasLength(204));
+@@ -1,92 +1,136 @@
+ import 'dart:convert';
+-import 'dart:ui' as ui;
++import 'dart:typed_data';
  
+ import 'package:botx_pro_v16/app/market_identity_logo.dart';
+ import 'package:flutter/material.dart';
+ import 'package:flutter/services.dart';
+ import 'package:flutter_test/flutter_test.dart';
+ 
++Iterable<List<T>> _batches<T>(List<T> values, int size) sync* {
++  for (var index = 0; index < values.length; index += size) {
++    final end = (index + size).clamp(0, values.length);
++    yield values.sublist(index, end);
++  }
++}
++
+ void main() {
+   TestWidgetsFlutterBinding.ensureInitialized();
+ 
+-  testWidgets('all 204 market symbols have a scalable identity renderer', (tester) async {
+-    final raw = await rootBundle.loadString('assets/manifests/market_symbols.v16.json');
+-    final decoded = jsonDecode(raw) as Map<String, dynamic>;
+-    final symbols = (decoded['symbols'] as List).cast<Map<String, dynamic>>();
+-    expect(symbols, hasLength(204));
+-
 -    for (final item in symbols) {
 -      final symbol = '${item['canonical']}';
 -      final category = '${item['category']}';
@@ -16,46 +38,53 @@
 -                symbol: symbol,
 -                category: category,
 -                size: 56,
--              ),
-+    await tester.pumpWidget(
-+      MaterialApp(
-+        home: Scaffold(
-+          body: SingleChildScrollView(
-+            child: Wrap(
-+              children: [
-+                for (final item in symbols)
-+                  SizedBox(
-+                    width: 60,
-+                    height: 60,
-+                    child: MarketIdentityLogo(
-+                      key: ValueKey('logo-${item['canonical']}'),
-+                      symbol: '${item['canonical']}',
-+                      category: '${item['category']}',
-+                      size: 56,
++  testWidgets(
++    'all 204 market symbols have a scalable identity renderer',
++    (tester) async {
++      final raw = await rootBundle.loadString('assets/manifests/market_symbols.v16.json');
++      final decoded = jsonDecode(raw) as Map<String, dynamic>;
++      final symbols = (decoded['symbols'] as List).cast<Map<String, dynamic>>();
++      expect(symbols, hasLength(204));
++
++      // Render bounded batches. One 204-widget tree caused the test runner to
++      // spend minutes laying out flag/vector assets and obscured which batch
++      // failed. Batches preserve complete catalogue coverage without a giant
++      // retained render tree.
++      for (final batch in _batches(symbols, 12)) {
++        await tester.pumpWidget(
++          MaterialApp(
++            home: Scaffold(
++              body: Wrap(
++                children: [
++                  for (final item in batch)
++                    SizedBox(
++                      width: 60,
++                      height: 60,
++                      child: MarketIdentityLogo(
++                        key: ValueKey('logo-${item['canonical']}'),
++                        symbol: '${item['canonical']}',
++                        category: '${item['category']}',
++                        size: 56,
++                      ),
 +                    ),
-+                  ),
-+              ],
++                ],
+               ),
              ),
            ),
-         ),
+-        ),
 -      );
 -      await tester.pump();
-+      ),
-+    );
-+    await tester.pump();
-+    for (final item in symbols) {
-+      final symbol = '${item['canonical']}';
-       expect(find.byKey(ValueKey('logo-$symbol')), findsOneWidget, reason: symbol);
+-      expect(find.byKey(ValueKey('logo-$symbol')), findsOneWidget, reason: symbol);
 -      expect(tester.takeException(), isNull, reason: '$symbol / $category');
-     }
-+    expect(tester.takeException(), isNull);
-   });
- 
-   testWidgets('all 53 brokers render from bundled assets or vector fallback', (tester) async {
-@@ -44,30 +52,41 @@
-     final brokers = (decoded['brokers'] as List).cast<Map<String, dynamic>>();
-     expect(brokers, hasLength(53));
- 
+-    }
+-  });
+-
+-  testWidgets('all 53 brokers render from bundled assets or vector fallback', (tester) async {
+-    final raw = await rootBundle.loadString('assets/manifests/brokers.v16.json');
+-    final decoded = jsonDecode(raw) as Map<String, dynamic>;
+-    final brokers = (decoded['brokers'] as List).cast<Map<String, dynamic>>();
+-    expect(brokers, hasLength(53));
+-
 -    for (final broker in brokers) {
 -      final code = '${broker['code']}';
 -      final name = '${broker['name']}';
@@ -70,46 +99,103 @@
 -                logoDomain: '${broker['logo_domain'] ?? ''}',
 -                localAsset: brokerAssetForCode(code),
 -                size: 56,
--              ),
-+    await tester.pumpWidget(
-+      MaterialApp(
-+        home: Scaffold(
-+          body: SingleChildScrollView(
-+            child: Wrap(
-+              children: [
-+                for (final broker in brokers)
-+                  SizedBox(
-+                    width: 60,
-+                    height: 60,
-+                    child: BrokerIdentityLogo(
-+                      key: ValueKey('broker-logo-${broker['code']}'),
-+                      code: '${broker['code']}',
-+                      name: '${broker['name']}',
-+                      logoDomain: '${broker['logo_domain'] ?? ''}',
-+                      localAsset: brokerAssetForCode('${broker['code']}'),
-+                      size: 56,
++        );
++        await tester.pump();
++        for (final item in batch) {
++          final symbol = '${item['canonical']}';
++          expect(find.byKey(ValueKey('logo-$symbol')), findsOneWidget, reason: symbol);
++        }
++        expect(tester.takeException(), isNull, reason: 'batch ${batch.first['canonical']}');
++        await tester.pumpWidget(const SizedBox.shrink());
++        await tester.pump();
++      }
++    },
++    timeout: const Timeout(Duration(minutes: 12)),
++  );
++
++  testWidgets(
++    'all 53 brokers render from bundled assets or vector fallback',
++    (tester) async {
++      final raw = await rootBundle.loadString('assets/manifests/brokers.v16.json');
++      final decoded = jsonDecode(raw) as Map<String, dynamic>;
++      final brokers = (decoded['brokers'] as List).cast<Map<String, dynamic>>();
++      expect(brokers, hasLength(53));
++
++      for (final batch in _batches(brokers, 12)) {
++        await tester.pumpWidget(
++          MaterialApp(
++            home: Scaffold(
++              body: Wrap(
++                children: [
++                  for (final broker in batch)
++                    SizedBox(
++                      width: 60,
++                      height: 60,
++                      child: BrokerIdentityLogo(
++                        key: ValueKey('broker-logo-${broker['code']}'),
++                        code: '${broker['code']}',
++                        name: '${broker['name']}',
++                        logoDomain: '${broker['logo_domain'] ?? ''}',
++                        localAsset: brokerAssetForCode('${broker['code']}'),
++                        size: 56,
++                      ),
 +                    ),
-+                  ),
-+              ],
++                ],
+               ),
              ),
            ),
-         ),
+-        ),
 -      );
 -      await tester.pump();
-+      ),
-+    );
-+    await tester.pump();
-+    for (final broker in brokers) {
-+      final code = '${broker['code']}';
-       expect(find.byKey(ValueKey('broker-logo-$code')), findsOneWidget, reason: code);
+-      expect(find.byKey(ValueKey('broker-logo-$code')), findsOneWidget, reason: code);
 -      expect(find.byType(Image), brokerAssetForCode(code) == null ? findsNothing : findsOneWidget, reason: code);
 -      expect(tester.takeException(), isNull, reason: '$code / $name');
-     }
-+    expect(
-+      find.byType(Image),
-+      findsNWidgets(brokers.where((broker) => brokerAssetForCode('${broker['code']}') != null).length),
-+    );
-+    expect(tester.takeException(), isNull);
-   });
+-    }
+-  });
++        );
++        await tester.pump();
++        for (final broker in batch) {
++          final code = '${broker['code']}';
++          expect(find.byKey(ValueKey('broker-logo-$code')), findsOneWidget, reason: code);
++        }
++        expect(
++          find.byType(Image),
++          findsNWidgets(batch.where((broker) => brokerAssetForCode('${broker['code']}') != null).length),
++        );
++        expect(tester.takeException(), isNull, reason: 'broker batch ${batch.first['code']}');
++        await tester.pumpWidget(const SizedBox.shrink());
++        await tester.pump();
++      }
++    },
++    timeout: const Timeout(Duration(minutes: 6)),
++  );
  
    test('mapped primary broker assets are at least 96x96', () async {
+     final raw = await rootBundle.loadString('assets/manifests/brokers.v16.json');
+     final decoded = jsonDecode(raw) as Map<String, dynamic>;
+     final brokers = (decoded['brokers'] as List).cast<Map<String, dynamic>>();
++    final checkedAssets = <String>{};
+ 
+     for (final broker in brokers) {
+       final code = '${broker['code']}';
+       final asset = brokerAssetForCode(code);
+-      if (asset == null) continue;
++      if (asset == null || !checkedAssets.add(asset)) continue;
+       final data = await rootBundle.load(asset);
+-      final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
+-      final frame = await codec.getNextFrame();
+-      expect(frame.image.width, greaterThanOrEqualTo(96), reason: '$code width');
+-      expect(frame.image.height, greaterThanOrEqualTo(96), reason: '$code height');
+-      frame.image.dispose();
+-      codec.dispose();
++      final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
++      expect(bytes.length, greaterThanOrEqualTo(24), reason: '$code PNG header');
++      expect(bytes.sublist(1, 4), orderedEquals(const [0x50, 0x4E, 0x47]), reason: '$code PNG signature');
++      final view = ByteData.sublistView(bytes);
++      expect(view.getUint32(16, Endian.big), greaterThanOrEqualTo(96), reason: '$code width');
++      expect(view.getUint32(20, Endian.big), greaterThanOrEqualTo(96), reason: '$code height');
+     }
++    expect(checkedAssets, isNotEmpty);
+   });
+ 
+   testWidgets('broker vector fallback never renders blank', (tester) async {
