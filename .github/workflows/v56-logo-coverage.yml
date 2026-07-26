@@ -23,7 +23,7 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Download SHA-locked V56 source
+      - name: Download SHA-locked V56 source and apply reconstruction patch
         shell: bash
         env:
           SOURCE_FILE_ID: 1CpzzVCoTWhvo67LZ5fEty_UruvDzsy08
@@ -40,6 +40,12 @@ jobs:
             --output "$RUNNER_TEMP/v56/source.tar.gz"
           echo "${EXPECTED_SHA}  $RUNNER_TEMP/v56/source.tar.gz" | sha256sum --check --strict
           tar -xzf "$RUNNER_TEMP/v56/source.tar.gz" -C "$GITHUB_WORKSPACE/app"
+          curl --fail --location --retry 5 --retry-delay 3 \
+            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/v56_patches/v56-reconstruction-mobile-fix.patch" \
+            --output "$RUNNER_TEMP/v56/reconstruction.patch"
+          cd "$GITHUB_WORKSPACE/app"
+          patch --batch --forward -p1 < "$RUNNER_TEMP/v56/reconstruction.patch"
+          ! grep -RIn 'google.com/s2/favicons\|class _NetworkBrokerLogo' lib
 
       - name: Resolve logo dependencies
         working-directory: app
@@ -49,6 +55,6 @@ jobs:
         working-directory: app
         run: flutter analyze --fatal-infos lib/app/market_identity_logo.dart test/market_identity_logo_test.dart
 
-      - name: Render all 204 symbol logos
+      - name: Render all 204 market and 53 broker logos
         working-directory: app
         run: flutter test --concurrency=1 --reporter expanded test/market_identity_logo_test.dart
