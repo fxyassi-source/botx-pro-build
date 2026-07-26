@@ -1,0 +1,66 @@
+name: BotX Pro V56 Patch Chain Diagnostic v2
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  patch-chain-v2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Fetch locked source and patch files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/v56" "$GITHUB_WORKSPACE/app"
+          curl --fail --location --retry 5 --retry-delay 3 \
+            "https://drive.usercontent.google.com/download?id=1CpzzVCoTWhvo67LZ5fEty_UruvDzsy08&export=download&confirm=t" \
+            -o "$RUNNER_TEMP/v56/source.tar.gz"
+          echo "68ba3cc8a43347ed92c0a904da96bd23e94041f4eb92b07c1e4b65a860ba6b4d  $RUNNER_TEMP/v56/source.tar.gz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/v56/source.tar.gz" -C "$GITHUB_WORKSPACE/app"
+          fetch_patch() {
+            local name="$1" path="$2"
+            echo "FETCH ${name}: ${path}"
+            curl --fail --location --retry 5 --retry-delay 3 \
+              "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/${path}" \
+              -o "$RUNNER_TEMP/v56/${name}.patch"
+            wc -c "$RUNNER_TEMP/v56/${name}.patch"
+            sha256sum "$RUNNER_TEMP/v56/${name}.patch"
+          }
+          fetch_patch reconstruction .github/v56_patches/v56-reconstruction-mobile-fix.patch
+          fetch_patch demo .github/v56_patches/v56-demo-certification-fix.patch
+          fetch_patch logo .github/v56_patches/v56-logo-test-optimization-v7.patch
+          fetch_patch persistence .github/v56_patches/v56-brokerless-demo-persistence.patch
+          fetch_patch dispose .github/v56_patches/v56-demo-dispose-async-fix.patch
+          fetch_patch ui .github/v56_patches/v56-ui-smoke-test-fix-v9.patch
+          fetch_patch visual .github/v56_patches/v56-visual-capture-async-fix.patch
+
+      - name: Apply patches one by one
+        shell: bash
+        run: |
+          set -o pipefail
+          cd "$GITHUB_WORKSPACE/app"
+          : > "$RUNNER_TEMP/v56-patch-chain-v2.log"
+          for name in reconstruction demo logo persistence dispose ui visual; do
+            echo "===== APPLY ${name} =====" | tee -a "$RUNNER_TEMP/v56-patch-chain-v2.log"
+            if patch --batch --forward -p1 < "$RUNNER_TEMP/v56/${name}.patch" 2>&1 | tee -a "$RUNNER_TEMP/v56-patch-chain-v2.log"; then
+              echo "RESULT ${name}: PASS" | tee -a "$RUNNER_TEMP/v56-patch-chain-v2.log"
+            else
+              echo "RESULT ${name}: FAIL" | tee -a "$RUNNER_TEMP/v56-patch-chain-v2.log"
+              find . -name '*.rej' -print -exec cat {} \; | tee -a "$RUNNER_TEMP/v56-patch-chain-v2.log"
+              exit 1
+            fi
+          done
+
+      - name: Upload exact patch diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: botx-pro-v56-patch-chain-diagnostic-v2
+          if-no-files-found: ignore
+          path: ${{ runner.temp }}/v56-patch-chain-v2.log
