@@ -1,0 +1,153 @@
+name: BotX Pro V56 Defect Repair Validation
+
+on:
+  push:
+    branches: [v56-defect-repair-20260726]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  defect-repair-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SOURCE_FILE_ID: 1CpzzVCoTWhvo67LZ5fEty_UruvDzsy08
+      SOURCE_SHA256: 68ba3cc8a43347ed92c0a904da96bd23e94041f4eb92b07c1e4b65a860ba6b4d
+      RECONSTRUCTION_SHA: b1689b8159ac0f555fa6658f857e5b9d9b473bc840a6a4566ff2b8421f88b70f
+      DEMO_SHA: bd74e5546206dfd1c41ccf967c2ee5105a8ca9ebcfa53e3d88bbb4269b95b076
+      LOGO_SHA: 55cb6efb6c0879e2cb15e235a86ae645a29123a81136f26cae302e2b97465bb8
+      PERSISTENCE_SHA: 8bee1cab3afdc6fb215eccc5ee95b2836fdf597daee245323ea05b18b7058188
+      DISPOSE_SHA: 31c075d5d1388b7681b6f96e7a5c391be7d408ad42f801584372c8a74cd9562c
+      UI_SHA: 01bcfb500fa179225ea3c65c0cf5169f1009761707702c5a2a9b4d5ebfaff368
+      VISUAL_SHA: 7b67d331e6c0e31d6a49feb5a65619dbad142f4c39e66a6f0dccf37fb8823bba
+      DEFECT_PATCH_FILE_ID: 1HkGGzGM8RUy0hK6wPOUKj6f5thCUyb78
+      DEFECT_PATCH_SHA256: 1d08d5f196b5e88582dd8c1afe41c2d1ae7556dd1c8ef0c6bc2c7116ba368e06
+
+    steps:
+      - name: 1. Confirm isolated workspace
+        run: test ! -d "$GITHUB_WORKSPACE/.git"
+
+      - name: 2. Set up Flutter 3.44.7
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.7'
+          channel: stable
+          cache: true
+
+      - name: 3. Reconstruct certified V56 mobile baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/v56" "$GITHUB_WORKSPACE/app"
+          curl --fail --location --retry 5 --retry-delay 3 \
+            "https://drive.usercontent.google.com/download?id=${SOURCE_FILE_ID}&export=download&confirm=t" \
+            -o "$RUNNER_TEMP/v56/source.tar.gz"
+          echo "${SOURCE_SHA256}  $RUNNER_TEMP/v56/source.tar.gz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/v56/source.tar.gz" -C "$GITHUB_WORKSPACE/app"
+
+          fetch_patch() {
+            local name="$1" path="$2" expected="$3"
+            curl --fail --location --retry 5 --retry-delay 3 \
+              "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/d39318ee5540632b6fbd81fb413b2455e845e6f7/${path}" \
+              -o "$RUNNER_TEMP/v56/${name}.patch"
+            echo "${expected}  $RUNNER_TEMP/v56/${name}.patch" | sha256sum --check --strict
+          }
+          fetch_patch reconstruction .github/v56_patches/v56-reconstruction-mobile-fix.patch "$RECONSTRUCTION_SHA"
+          fetch_patch demo .github/v56_patches/v56-demo-certification-fix.patch "$DEMO_SHA"
+          fetch_patch logo .github/v56_patches/v56-logo-test-optimization-v7.patch "$LOGO_SHA"
+          fetch_patch persistence .github/v56_patches/v56-brokerless-demo-persistence.patch "$PERSISTENCE_SHA"
+          fetch_patch dispose .github/v56_patches/v56-demo-dispose-async-fix.patch "$DISPOSE_SHA"
+          fetch_patch ui .github/v56_patches/v56-ui-smoke-test-fix-v9-clean.patch "$UI_SHA"
+          fetch_patch visual .github/v56_patches/v56-visual-capture-async-fix.patch "$VISUAL_SHA"
+
+          cd "$GITHUB_WORKSPACE/app"
+          for name in reconstruction demo logo persistence dispose ui visual; do
+            patch --batch --forward -p1 < "$RUNNER_TEMP/v56/${name}.patch"
+          done
+          grep -F 'version: 56.0.0+5600' pubspec.yaml
+          grep -F 'class V56NativeShell' lib/app/v56_native_shell.dart
+
+      - name: 4. Download and apply numbered-defect patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 5 --retry-delay 3 \
+            "https://drive.usercontent.google.com/download?id=${DEFECT_PATCH_FILE_ID}&export=download&confirm=t" \
+            -o "$RUNNER_TEMP/v56/defect-repair.patch"
+          echo "${DEFECT_PATCH_SHA256}  $RUNNER_TEMP/v56/defect-repair.patch" | sha256sum --check --strict
+          cd "$GITHUB_WORKSPACE/app"
+          patch --batch --forward -p1 < "$RUNNER_TEMP/v56/defect-repair.patch"
+          grep -F 'class TradingViewChartSurface' lib/features/market/trading_view_chart.dart
+          grep -F "ValueKey('v56_custom_bot_fullscreen')" lib/app/v56_native_shell.dart
+          grep -F "ValueKey('v56_login_signup')" lib/app/botx_app.dart
+
+      - name: 5. Resolve and format
+        working-directory: app
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter pub get 2>&1 | tee "$RUNNER_TEMP/flutter-pub-get.log"
+          dart format \
+            lib/app/botx_app.dart \
+            lib/app/local_demo_engine.dart \
+            lib/app/market_identity_logo.dart \
+            lib/app/v56_native_shell.dart \
+            lib/features/market/trading_view_chart.dart \
+            test/market_identity_logo_test.dart \
+            test/v56_ui_smoke_test.dart \
+            2>&1 | tee "$RUNNER_TEMP/dart-format.log"
+
+      - name: 6. Strict analyze
+        working-directory: app
+        run: flutter analyze --fatal-infos 2>&1 | tee "$RUNNER_TEMP/flutter-analyze.log"
+
+      - name: 7. Defect regression tests
+        working-directory: app
+        timeout-minutes: 18
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > "$RUNNER_TEMP/flutter-defect-tests.log"
+          for test_file in \
+            test/market_identity_logo_test.dart \
+            test/v56_ui_smoke_test.dart \
+            test/local_demo_engine_test.dart; do
+            echo "=== ${test_file} ===" | tee -a "$RUNNER_TEMP/flutter-defect-tests.log"
+            timeout 420s flutter test --concurrency=1 --reporter expanded "$test_file" \
+              2>&1 | tee -a "$RUNNER_TEMP/flutter-defect-tests.log"
+          done
+
+      - name: 8. Layout capture only
+        working-directory: app
+        timeout-minutes: 10
+        run: |
+          mkdir -p test/goldens/generated
+          flutter test --update-goldens test/v56_visual_capture_test.dart \
+            2>&1 | tee "$RUNNER_TEMP/flutter-visual.log"
+          test "$(find test/goldens/generated -name '*.png' | wc -l)" -eq 7
+
+      - name: 9. Upload diagnostics and formatted repair source
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: botx-pro-v56-defect-repair-validation
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/flutter-pub-get.log
+            ${{ runner.temp }}/dart-format.log
+            ${{ runner.temp }}/flutter-analyze.log
+            ${{ runner.temp }}/flutter-defect-tests.log
+            ${{ runner.temp }}/flutter-visual.log
+            app/pubspec.lock
+            app/lib/app/botx_app.dart
+            app/lib/app/local_demo_engine.dart
+            app/lib/app/market_identity_logo.dart
+            app/lib/app/v56_native_shell.dart
+            app/lib/features/market/trading_view_chart.dart
+            app/test/market_identity_logo_test.dart
+            app/test/v56_ui_smoke_test.dart
+            app/test/goldens/generated/*.png
+
+      # Deliberately no APK/AAB build: user acceptance defects are not yet certified.
