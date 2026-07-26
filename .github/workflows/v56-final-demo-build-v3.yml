@@ -1,0 +1,239 @@
+name: BotX Pro V56 Final Demo Build v3
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  final-demo-build-v3:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      SOURCE_FILE_ID: 1CpzzVCoTWhvo67LZ5fEty_UruvDzsy08
+      SOURCE_SHA256: 68ba3cc8a43347ed92c0a904da96bd23e94041f4eb92b07c1e4b65a860ba6b4d
+      RECONSTRUCTION_PATCH_SHA256: b1689b8159ac0f555fa6658f857e5b9d9b473bc840a6a4566ff2b8421f88b70f
+      DEMO_PATCH_SHA256: bd74e5546206dfd1c41ccf967c2ee5105a8ca9ebcfa53e3d88bbb4269b95b076
+      LOGO_PATCH_SHA256: 55cb6efb6c0879e2cb15e235a86ae645a29123a81136f26cae302e2b97465bb8
+      PERSISTENCE_PATCH_SHA256: 8bee1cab3afdc6fb215eccc5ee95b2836fdf597daee245323ea05b18b7058188
+      DISPOSE_PATCH_SHA256: 31c075d5d1388b7681b6f96e7a5c391be7d408ad42f801584372c8a74cd9562c
+      UI_PATCH_SHA256: 805f1d1420f75a1fe91af9d424763dd240ab2d805708e2a24b6e634585f391fc
+      APP_VERSION: 56.0.0+5600
+      APP_PACKAGE: pro.botx.app
+
+    steps:
+      - name: 1. Isolated workspace
+        run: test ! -d "$GITHUB_WORKSPACE/.git"
+
+      - name: 2. Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: 3. Flutter 3.44.7
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.7'
+          channel: stable
+          cache: true
+
+      - name: 4. Locked source and exact patch chain
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/v56" "$GITHUB_WORKSPACE/app"
+          curl --fail --location --retry 5 --retry-delay 3 \
+            "https://drive.usercontent.google.com/download?id=${SOURCE_FILE_ID}&export=download&confirm=t" \
+            -o "$RUNNER_TEMP/v56/source.tar.gz"
+          echo "${SOURCE_SHA256}  $RUNNER_TEMP/v56/source.tar.gz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/v56/source.tar.gz" -C "$GITHUB_WORKSPACE/app"
+          fetch_patch() {
+            local name="$1" path="$2" sha="$3"
+            curl --fail --location --retry 5 --retry-delay 3 \
+              "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/${path}" \
+              -o "$RUNNER_TEMP/v56/${name}.patch"
+            echo "${sha}  $RUNNER_TEMP/v56/${name}.patch" | sha256sum --check --strict
+          }
+          fetch_patch reconstruction .github/v56_patches/v56-reconstruction-mobile-fix.patch "$RECONSTRUCTION_PATCH_SHA256"
+          fetch_patch demo .github/v56_patches/v56-demo-certification-fix.patch "$DEMO_PATCH_SHA256"
+          fetch_patch logo .github/v56_patches/v56-logo-test-optimization-v7.patch "$LOGO_PATCH_SHA256"
+          fetch_patch persistence .github/v56_patches/v56-brokerless-demo-persistence.patch "$PERSISTENCE_PATCH_SHA256"
+          fetch_patch dispose .github/v56_patches/v56-demo-dispose-async-fix.patch "$DISPOSE_PATCH_SHA256"
+          fetch_patch ui .github/v56_patches/v56-ui-smoke-test-fix-v5.patch "$UI_PATCH_SHA256"
+          cd "$GITHUB_WORKSPACE/app"
+          for name in reconstruction demo logo persistence dispose ui; do
+            patch --batch --forward -p1 < "$RUNNER_TEMP/v56/${name}.patch"
+          done
+          grep -F "version: ${APP_VERSION}" pubspec.yaml
+          grep -F 'class V56NativeShell' lib/app/v56_native_shell.dart
+          grep -F "namespace = \"${APP_PACKAGE}\"" android/app/build.gradle.kts
+          ! grep -Eq 'webview_flutter|flutter_html' pubspec.yaml
+          ! grep -RIn 'google.com/s2/favicons\|class _NetworkBrokerLogo' lib
+
+      - name: 5. Build memory and RC signing
+        working-directory: app
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path=Path('android/gradle.properties')
+          rows=path.read_text().splitlines() if path.exists() else []
+          replacements={
+            'org.gradle.jvmargs=':'org.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=1536m -XX:ReservedCodeCacheSize=256m -Xss512k -XX:+UseG1GC -Dfile.encoding=UTF-8',
+            'org.gradle.workers.max=':'org.gradle.workers.max=1',
+            'kotlin.daemon.jvmargs=':'kotlin.daemon.jvmargs=-Xmx1024m -XX:MaxMetaspaceSize=512m -Xss512k',
+          }
+          out=[]; seen=set()
+          for row in rows:
+            prefix=next((p for p in replacements if row.startswith(p)),None)
+            if prefix:
+              if prefix not in seen: out.append(replacements[prefix]); seen.add(prefix)
+            else: out.append(row)
+          for prefix,value in replacements.items():
+            if prefix not in seen: out.append(value)
+          path.write_text('\n'.join(out)+'\n')
+          PY
+          keytool -genkeypair -keystore android/app/v56-rc-keystore.jks \
+            -storepass changeit-v56-rc -keypass changeit-v56-rc -alias v56rc \
+            -keyalg RSA -keysize 3072 -validity 3650 \
+            -dname "CN=BotX Pro V56 Release Candidate, OU=Testing, O=BotX AI, L=Faridabad, ST=Haryana, C=IN"
+          cat > android/key.properties <<'EOF'
+          storePassword=changeit-v56-rc
+          keyPassword=changeit-v56-rc
+          keyAlias=v56rc
+          storeFile=v56-rc-keystore.jks
+          EOF
+
+      - name: 6. Dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: 7. Strict analyze
+        working-directory: app
+        run: flutter analyze --fatal-infos
+
+      - name: 8. Contract and security tests
+        working-directory: app
+        timeout-minutes: 6
+        run: |
+          flutter test --concurrency=1 --reporter expanded \
+            test/v16_performance_contract_test.dart \
+            test/api_client_security_test.dart \
+            test/chart_datafeed_contract_test.dart \
+            2>&1 | tee "$RUNNER_TEMP/flutter-contract-tests.log"
+
+      - name: 9. Granular V56 UI smoke tests
+        working-directory: app
+        timeout-minutes: 12
+        shell: bash
+        run: |
+          set -euo pipefail
+          tests=(
+            "Skip for now enters the guest V56 shell"
+            "Guest V56 shell creates a demo account from a virtual balance"
+            "Portfolio swipes to Add Broker inside the same carousel"
+            "Market keeps the XM-sized chart surface"
+            "All eight locked V56 theme modes are selectable"
+            "Terminal Hub double-tap opens complete history"
+            "Bots screen keeps compact Terminal Hub and deployment sections"
+            "Settings restores plans and hides developer-only rows"
+          )
+          : > "$RUNNER_TEMP/flutter-ui-smoke-tests.log"
+          for test_name in "${tests[@]}"; do
+            echo "=== $test_name ===" | tee -a "$RUNNER_TEMP/flutter-ui-smoke-tests.log"
+            timeout 80s flutter test --concurrency=1 --reporter expanded \
+              test/v56_ui_smoke_test.dart --plain-name "$test_name" \
+              2>&1 | tee -a "$RUNNER_TEMP/flutter-ui-smoke-tests.log"
+          done
+
+      - name: 10. Granular five-bot lifecycle and restart tests
+        working-directory: app
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          set -euo pipefail
+          tests=(
+            "local demo certifies all five bot families and emergency-stop semantics"
+            "local demo persists wallet bots positions and trade history across restart"
+            "corrupt local demo snapshot fails closed and restores legacy wallet only"
+          )
+          : > "$RUNNER_TEMP/flutter-five-bot-tests.log"
+          for test_name in "${tests[@]}"; do
+            echo "=== $test_name ===" | tee -a "$RUNNER_TEMP/flutter-five-bot-tests.log"
+            timeout 100s flutter test --concurrency=1 --reporter expanded \
+              test/local_demo_engine_test.dart --plain-name "$test_name" \
+              2>&1 | tee -a "$RUNNER_TEMP/flutter-five-bot-tests.log"
+          done
+
+      - name: 11. Seven V56 screenshots
+        working-directory: app
+        timeout-minutes: 12
+        run: |
+          mkdir -p test/goldens/generated
+          flutter test --update-goldens test/v56_visual_capture_test.dart \
+            2>&1 | tee "$RUNNER_TEMP/flutter-visual.log"
+          test "$(find test/goldens/generated -name '*.png' | wc -l)" -eq 7
+
+      - name: 12. Signed ARM64 APK
+        working-directory: app
+        run: |
+          flutter build apk --release --target-platform android-arm64 --dart-define=ALLOW_LIVE_MODE=false \
+            2>&1 | tee "$RUNNER_TEMP/flutter-apk-build.log"
+
+      - name: 13. Android App Bundle
+        working-directory: app
+        run: |
+          flutter build appbundle --release --dart-define=ALLOW_LIVE_MODE=false \
+            2>&1 | tee "$RUNNER_TEMP/flutter-aab-build.log"
+
+      - name: 14. Signing secret scan and SHA
+        working-directory: app
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          AAB=build/app/outputs/bundle/release/app-release.aab
+          test -s "$APK"; test -s "$AAB"
+          APK_SIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          "$APK_SIGNER" verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/apksigner.log"
+          ! strings "$APK" | grep -Eq 'sk-[A-Za-z0-9]{16,}|gsk_[A-Za-z0-9]{16,}|AIza[0-9A-Za-z_-]{24,}'
+          sha256sum "$APK" "$AAB" | tee BotX_Pro_V56_ANDROID_SHA256SUMS.txt
+          cp "$APK" BotX_Pro_V56_ARM64_Demo_Trading_RC.apk
+          cp "$AAB" BotX_Pro_V56_Demo_Trading_RC.aab
+
+      - name: 15. Diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: botx-pro-v56-final-v3-diagnostics
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/flutter-contract-tests.log
+            ${{ runner.temp }}/flutter-ui-smoke-tests.log
+            ${{ runner.temp }}/flutter-five-bot-tests.log
+            ${{ runner.temp }}/flutter-visual.log
+            ${{ runner.temp }}/flutter-apk-build.log
+            ${{ runner.temp }}/flutter-aab-build.log
+            ${{ runner.temp }}/apksigner.log
+
+      - name: 16. Screenshot artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: botx-pro-v56-final-v3-screenshots
+          path: app/test/goldens/generated/*.png
+
+      - name: 17. Android release artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: botx-pro-v56-final-v3-android
+          path: |
+            app/BotX_Pro_V56_ARM64_Demo_Trading_RC.apk
+            app/BotX_Pro_V56_Demo_Trading_RC.aab
+            app/BotX_Pro_V56_ANDROID_SHA256SUMS.txt

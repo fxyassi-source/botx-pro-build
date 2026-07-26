@@ -1,0 +1,348 @@
+diff -uNr a/lib/app/local_demo_engine.dart b/lib/app/local_demo_engine.dart
+--- a/lib/app/local_demo_engine.dart	2026-07-26 04:09:01.546518303 +0000
++++ b/lib/app/local_demo_engine.dart	2026-07-26 04:09:01.550518303 +0000
+@@ -1,4 +1,5 @@
+ import 'dart:async';
++import 'dart:convert';
+ import 'dart:math' as math;
+ 
+ import 'package:shared_preferences/shared_preferences.dart';
+@@ -10,6 +11,9 @@
+ class LocalDemoEngine {
+   LocalDemoEngine({required this.onChanged});
+ 
++  static const _snapshotKey = 'botx.localDemo.snapshot.v1';
++  static const _snapshotVersion = 1;
++
+   final void Function(Map<String, dynamic> snapshot) onChanged;
+   final math.Random _ids = math.Random(5600);
+   final List<Map<String, dynamic>> _bots = [];
+@@ -23,11 +27,27 @@
+   double _balance = 0;
+   String _currency = 'USD';
+   double _leverage = 100;
++  Future<void> _writeChain = Future<void>.value();
+ 
+   bool get configured => _initialBalance > 0;
+ 
+   Future<void> restore() async {
+     final preferences = await SharedPreferences.getInstance();
++    final encodedSnapshot = preferences.getString(_snapshotKey);
++    if (encodedSnapshot != null) {
++      try {
++        _restoreSnapshot(encodedSnapshot);
++        _start();
++        _emit();
++        return;
++      } catch (_) {
++        // Corrupt or incompatible snapshots fail closed. Legacy account fields
++        // are retained so the user can still enter the brokerless demo safely.
++        await preferences.remove(_snapshotKey);
++        _clearRuntime();
++      }
++    }
++
+     final amount = preferences.getDouble('botx.localDemo.amount');
+     if (amount == null || amount < 100) return;
+     _initialBalance = amount;
+@@ -66,6 +86,7 @@
+     await preferences.setDouble('botx.localDemo.balance', _balance);
+     await preferences.setString('botx.localDemo.currency', _currency);
+     await preferences.setDouble('botx.localDemo.leverage', _leverage);
++    await _persistState(preferences: preferences);
+     _start();
+     _emit();
+   }
+@@ -99,6 +120,7 @@
+     _bots.add(bot);
+     _prices.putIfAbsent(normalized, () => _baseline(normalized));
+     _emit();
++    unawaited(_persistState());
+     return {'ok': true, 'botInstanceId': id, 'environment': 'paper'};
+   }
+ 
+@@ -120,6 +142,7 @@
+       throw StateError('Unsupported demo bot command.');
+     }
+     _emit();
++    unawaited(_persistState());
+   }
+ 
+   Map<String, dynamic> synthesize({
+@@ -208,7 +231,9 @@
+       }
+     }
+ 
+-    _persistBalance();
++    if (_tick % 10 == 0) {
++      unawaited(_persistState());
++    }
+     _emit();
+   }
+ 
+@@ -375,10 +400,162 @@
+     return copy;
+   }
+ 
+-  Future<void> _persistBalance() async {
+-    if (_tick % 10 != 0) return;
+-    final preferences = await SharedPreferences.getInstance();
+-    await preferences.setDouble('botx.localDemo.balance', _balance);
++  Future<void> flushForTest() => _persistState();
++
++  Future<void> _persistState({SharedPreferences? preferences}) {
++    if (!configured) return Future<void>.value();
++    final encoded = jsonEncode(_snapshot());
++    final operation = _writeChain.then<void>((_) async {
++      final target = preferences ?? await SharedPreferences.getInstance();
++      await target.setString(_snapshotKey, encoded);
++      // Keep the legacy account fields for forward-compatible recovery and
++      // upgrades from earlier V56 practice builds.
++      await target.setDouble('botx.localDemo.amount', _initialBalance);
++      await target.setDouble('botx.localDemo.balance', _balance);
++      await target.setString('botx.localDemo.currency', _currency);
++      await target.setDouble('botx.localDemo.leverage', _leverage);
++    });
++    _writeChain = operation.then<void>(
++      (_) {},
++      onError: (Object _, StackTrace __) {},
++    );
++    return operation;
++  }
++
++  Map<String, dynamic> _snapshot() => {
++        'version': _snapshotVersion,
++        'savedAt': DateTime.now().toUtc().toIso8601String(),
++        'initialBalance': _initialBalance,
++        'balance': _balance,
++        'currency': _currency,
++        'leverage': _leverage,
++        'tick': _tick,
++        'bots': _bots
++            .map((bot) => Map<String, dynamic>.from(bot)
++              ..remove('openPositions')
++              ..remove('closedTrades'))
++            .toList(),
++        'openPositions': _openPositions.map((position) => Map<String, dynamic>.from(position)).toList(),
++        'closedTrades': _closedTrades.take(500).map((trade) => Map<String, dynamic>.from(trade)).toList(),
++        'prices': Map<String, double>.from(_prices),
++      };
++
++  void _restoreSnapshot(String encoded) {
++    final decoded = jsonDecode(encoded);
++    if (decoded is! Map) throw const FormatException('Demo snapshot must be an object.');
++    final snapshot = Map<String, dynamic>.from(decoded);
++    if (snapshot['version'] != _snapshotVersion) {
++      throw const FormatException('Unsupported demo snapshot version.');
++    }
++
++    final initialBalance = _finiteDouble(snapshot['initialBalance'], 'initialBalance');
++    final balance = _finiteDouble(snapshot['balance'], 'balance');
++    final leverage = _finiteDouble(snapshot['leverage'], 'leverage');
++    final currency = '${snapshot['currency'] ?? ''}'.trim().toUpperCase();
++    final tick = snapshot['tick'];
++    if (initialBalance < 100 || initialBalance > 100000000) {
++      throw const FormatException('Invalid demo initial balance.');
++    }
++    if (balance < 0 || balance > 1000000000000) {
++      throw const FormatException('Invalid demo balance.');
++    }
++    if (leverage < 1 || leverage > 2000) {
++      throw const FormatException('Invalid demo leverage.');
++    }
++    if (!RegExp(r'^[A-Z]{3}$').hasMatch(currency)) {
++      throw const FormatException('Invalid demo currency.');
++    }
++    if (tick is! int || tick < 0 || tick > 1000000000) {
++      throw const FormatException('Invalid demo clock.');
++    }
++
++    final bots = _mapList(snapshot['bots'], 'bots', maximum: 100);
++    final openPositions = _mapList(snapshot['openPositions'], 'openPositions', maximum: 500);
++    final closedTrades = _mapList(snapshot['closedTrades'], 'closedTrades', maximum: 500);
++    final botIds = <String>{};
++    for (final bot in bots) {
++      final id = '${bot['id'] ?? ''}';
++      final state = '${bot['state'] ?? ''}';
++      if (id.isEmpty || !botIds.add(id) || !const {'running', 'paused', 'stopped'}.contains(state)) {
++        throw const FormatException('Invalid demo bot state.');
++      }
++      if ('${bot['symbol'] ?? ''}'.isEmpty || '${bot['environment'] ?? ''}' != 'paper') {
++        throw const FormatException('Invalid demo bot contract.');
++      }
++    }
++    for (final position in openPositions) {
++      final botId = '${position['bot_instance_id'] ?? ''}';
++      Map<String, dynamic>? owner;
++      for (final bot in bots) {
++        if ('${bot['id']}' == botId) {
++          owner = bot;
++          break;
++        }
++      }
++      if (owner == null || owner['state'] == 'stopped' || '${position['state']}' != 'OPEN') {
++        throw const FormatException('Invalid demo open position ownership.');
++      }
++      _finiteDouble(position['entry_price'], 'entry_price');
++      _finiteDouble(position['current_price'], 'current_price');
++      _finiteDouble(position['_risk_capital'], '_risk_capital');
++    }
++
++    final rawPrices = snapshot['prices'];
++    if (rawPrices is! Map || rawPrices.length > 500) {
++      throw const FormatException('Invalid demo prices.');
++    }
++    final prices = <String, double>{};
++    for (final entry in rawPrices.entries) {
++      final symbol = '${entry.key}'.trim().toUpperCase();
++      final value = _finiteDouble(entry.value, 'price');
++      if (symbol.isEmpty || value <= 0) throw const FormatException('Invalid demo price.');
++      prices[symbol] = value;
++    }
++
++    _initialBalance = initialBalance;
++    _balance = balance;
++    _currency = currency;
++    _leverage = leverage;
++    _tick = tick;
++    _bots
++      ..clear()
++      ..addAll(bots);
++    _openPositions
++      ..clear()
++      ..addAll(openPositions);
++    _closedTrades
++      ..clear()
++      ..addAll(closedTrades);
++    _prices
++      ..clear()
++      ..addAll(prices);
++  }
++
++  List<Map<String, dynamic>> _mapList(Object? value, String name, {required int maximum}) {
++    if (value is! List || value.length > maximum) {
++      throw FormatException('Invalid demo $name.');
++    }
++    return value.map((item) {
++      if (item is! Map) throw FormatException('Invalid demo $name item.');
++      return Map<String, dynamic>.from(item);
++    }).toList();
++  }
++
++  double _finiteDouble(Object? value, String name) {
++    if (value is! num || !value.isFinite) throw FormatException('Invalid demo $name.');
++    return value.toDouble();
++  }
++
++  void _clearRuntime() {
++    _initialBalance = 0;
++    _balance = 0;
++    _currency = 'USD';
++    _leverage = 100;
++    _tick = 0;
++    _bots.clear();
++    _openPositions.clear();
++    _closedTrades.clear();
++    _prices.clear();
+   }
+ 
+   int _cadence(String type) {
+@@ -440,5 +617,6 @@
+ 
+   void dispose() {
+     _timer?.cancel();
++    unawaited(_persistState());
+   }
+ }
+diff -uNr a/test/local_demo_engine_test.dart b/test/local_demo_engine_test.dart
+--- a/test/local_demo_engine_test.dart	2026-07-26 04:09:01.546518303 +0000
++++ b/test/local_demo_engine_test.dart	2026-07-26 04:09:01.550518303 +0000
+@@ -62,6 +62,88 @@
+     );
+ 
+     expect(() => engine.command(aiId, 'delete_everything'), throwsStateError);
++    await engine.flushForTest();
+     engine.dispose();
+   });
++
++  test('local demo persists wallet bots positions and trade history across restart', () async {
++    SharedPreferences.setMockInitialValues(const {});
++    Map<String, dynamic> beforeRestart = const {};
++    final first = LocalDemoEngine(onChanged: (snapshot) => beforeRestart = snapshot);
++
++    await first.configure(amount: 50000, currency: 'USD', leverage: 200);
++    final ids = <String>[];
++    for (final bot in const [
++      ('AI_INSTITUTIONAL', 'AI Institutional'),
++      ('INSTITUTIONAL_HFT', 'Institutional HFT'),
++      ('DCA', 'DCA'),
++      ('GRID', 'Grid'),
++      ('CUSTOM', 'Create My Own Bot'),
++    ]) {
++      final started = first.startBot(botType: bot.$1, displayName: bot.$2, symbol: 'XAUUSD');
++      ids.add('${started['botInstanceId']}');
++    }
++    first.advanceForTest(240);
++    for (var index = 0; index < 30 && (beforeRestart['openOrders'] as List).isEmpty; index++) {
++      first.advanceForTest(1);
++    }
++    for (final id in ids) {
++      first.command(id, 'pause');
++    }
++    await first.flushForTest();
++
++    final expectedBalance = (beforeRestart['account'] as Map)['balance'];
++    final expectedOpenOrders = (beforeRestart['openOrders'] as List).length;
++    final expectedClosedOrders = (beforeRestart['closedOrders'] as List).length;
++    expect(expectedClosedOrders, greaterThan(0));
++    expect(expectedOpenOrders, greaterThan(0));
++    first.dispose();
++
++    Map<String, dynamic> restored = const {};
++    final second = LocalDemoEngine(onChanged: (snapshot) => restored = snapshot);
++    await second.restore();
++
++    expect((restored['account'] as Map)['balance'], expectedBalance);
++    expect((restored['bots'] as List), hasLength(5));
++    expect(
++      (restored['bots'] as List).cast<Map<String, dynamic>>().every((bot) => bot['state'] == 'paused'),
++      isTrue,
++    );
++    expect((restored['openOrders'] as List), hasLength(expectedOpenOrders));
++    expect((restored['closedOrders'] as List), hasLength(expectedClosedOrders));
++    expect(restored['practiceFeed'], isTrue);
++
++    second.command(ids.first, 'resume');
++    second.advanceForTest(30);
++    expect(
++      (restored['bots'] as List).cast<Map<String, dynamic>>().firstWhere((bot) => bot['id'] == ids.first)['state'],
++      'running',
++    );
++    await second.flushForTest();
++    second.dispose();
++  });
++
++  test('corrupt local demo snapshot fails closed and restores legacy wallet only', () async {
++    SharedPreferences.setMockInitialValues(const {
++      'botx.localDemo.snapshot.v1': '{not-json',
++      'botx.localDemo.amount': 10000.0,
++      'botx.localDemo.balance': 9750.0,
++      'botx.localDemo.currency': 'USD',
++      'botx.localDemo.leverage': 50.0,
++    });
++    Map<String, dynamic> restored = const {};
++    final engine = LocalDemoEngine(onChanged: (snapshot) => restored = snapshot);
++
++    await engine.restore();
++
++    expect((restored['account'] as Map)['balance'], 9750.0);
++    expect((restored['account'] as Map)['leverage'], 50.0);
++    expect(restored['bots'], isEmpty);
++    expect(restored['openOrders'], isEmpty);
++    final preferences = await SharedPreferences.getInstance();
++    expect(preferences.containsKey('botx.localDemo.snapshot.v1'), isFalse);
++    await engine.flushForTest();
++    engine.dispose();
++  });
++
+ }

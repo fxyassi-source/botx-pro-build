@@ -1,0 +1,64 @@
+name: BotX Pro V56 Patch Chain Diagnostic
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  patch-chain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download locked source and patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/v56" "$GITHUB_WORKSPACE/app"
+          curl --fail --location --retry 5 --retry-delay 3 \
+            "https://drive.usercontent.google.com/download?id=1CpzzVCoTWhvo67LZ5fEty_UruvDzsy08&export=download&confirm=t" \
+            -o "$RUNNER_TEMP/v56/source.tar.gz"
+          echo "68ba3cc8a43347ed92c0a904da96bd23e94041f4eb92b07c1e4b65a860ba6b4d  $RUNNER_TEMP/v56/source.tar.gz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/v56/source.tar.gz" -C "$GITHUB_WORKSPACE/app"
+          fetch_patch() {
+            local name="$1" path="$2" sha="$3"
+            curl --fail --location --retry 5 --retry-delay 3 \
+              "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/${path}" \
+              -o "$RUNNER_TEMP/v56/${name}.patch"
+            echo "${sha}  $RUNNER_TEMP/v56/${name}.patch" | sha256sum --check --strict
+          }
+          fetch_patch reconstruction .github/v56_patches/v56-reconstruction-mobile-fix.patch b1689b8159ac0f555fa6658f857e5b9d9b473bc840a6a4566ff2b8421f88b70f
+          fetch_patch demo .github/v56_patches/v56-demo-certification-fix.patch bd74e5546206dfd1c41ccf967c2ee5105a8ca9ebcfa53e3d88bbb4269b95b076
+          fetch_patch logo .github/v56_patches/v56-logo-test-optimization-v7.patch 55cb6efb6c0879e2cb15e235a86ae645a29123a81136f26cae302e2b97465bb8
+          fetch_patch persistence .github/v56_patches/v56-brokerless-demo-persistence.patch 8bee1cab3afdc6fb215eccc5ee95b2836fdf597daee245323ea05b18b7058188
+          fetch_patch dispose .github/v56_patches/v56-demo-dispose-async-fix.patch 31c075d5d1388b7681b6f96e7a5c391be7d408ad42f801584372c8a74cd9562c
+          fetch_patch ui .github/v56_patches/v56-ui-smoke-test-fix-v9.patch 578f213823404c5b0a0d79bc7649c00d4ba8a0da434a598244c5c345b4854277
+          fetch_patch visual .github/v56_patches/v56-visual-capture-async-fix.patch a21c01628d5ec04e1f951bde455a9aa371d5c37557a41128de86f25fb6b59f58
+
+      - name: Apply each patch with exact diagnostic
+        shell: bash
+        run: |
+          set -o pipefail
+          cd "$GITHUB_WORKSPACE/app"
+          : > "$RUNNER_TEMP/v56-patch-chain.log"
+          for name in reconstruction demo logo persistence dispose ui visual; do
+            echo "===== APPLY ${name} =====" | tee -a "$RUNNER_TEMP/v56-patch-chain.log"
+            if patch --batch --forward -p1 < "$RUNNER_TEMP/v56/${name}.patch" 2>&1 | tee -a "$RUNNER_TEMP/v56-patch-chain.log"; then
+              echo "RESULT ${name}: PASS" | tee -a "$RUNNER_TEMP/v56-patch-chain.log"
+            else
+              echo "RESULT ${name}: FAIL" | tee -a "$RUNNER_TEMP/v56-patch-chain.log"
+              find . -name '*.rej' -print -exec cat {} \; | tee -a "$RUNNER_TEMP/v56-patch-chain.log"
+              exit 1
+            fi
+          done
+
+      - name: Upload patch-chain diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: botx-pro-v56-patch-chain-diagnostic
+          if-no-files-found: error
+          path: ${{ runner.temp }}/v56-patch-chain.log

@@ -1,0 +1,319 @@
+--- a/lib/app/market_identity_logo.dart
++++ b/lib/app/market_identity_logo.dart
+@@ -1,3 +1,5 @@
++import 'dart:math' as math;
++
+ import 'package:country_flags/country_flags.dart';
+ import 'package:flutter/material.dart';
+ import 'package:simple_icons/simple_icons.dart';
+@@ -108,28 +110,24 @@
+     final effectiveAccent = accent ?? scheme.primary;
+     final effectiveSurface = surface ?? Colors.white;
+     final effectiveBorder = border ?? scheme.outlineVariant;
+-    final domain = logoDomain.trim().toLowerCase();
+     final fallback = _VectorFallbackMark(
+       mark: _brokerMark(name),
+       size: size,
+       accent: effectiveAccent,
+     );
+ 
+-    Widget image;
+-    if (localAsset != null && localAsset!.isNotEmpty) {
+-      image = Image.asset(
+-        localAsset!,
+-        fit: BoxFit.contain,
+-        filterQuality: FilterQuality.high,
+-        errorBuilder: (_, __, ___) => domain.isEmpty
+-            ? fallback
+-            : _NetworkBrokerLogo(domain: domain, fallback: fallback),
+-      );
+-    } else if (domain.isNotEmpty) {
+-      image = _NetworkBrokerLogo(domain: domain, fallback: fallback);
+-    } else {
+-      image = fallback;
+-    }
++    // Broker marks must be deterministic and available offline. Official
++    // bundled assets are preferred; every other catalogue entry receives a
++    // crisp vector fallback. Favicons are intentionally not fetched because
++    // they are not authoritative brand assets and make screenshots/tests flaky.
++    final image = localAsset != null && localAsset!.isNotEmpty
++        ? Image.asset(
++            localAsset!,
++            fit: BoxFit.contain,
++            filterQuality: FilterQuality.high,
++            errorBuilder: (_, __, ___) => fallback,
++          )
++        : fallback;
+ 
+     return Semantics(
+       label: '$name broker logo',
+@@ -150,28 +148,6 @@
+   }
+ }
+ 
+-class _NetworkBrokerLogo extends StatelessWidget {
+-  const _NetworkBrokerLogo({required this.domain, required this.fallback});
+-  final String domain;
+-  final Widget fallback;
+-
+-  @override
+-  Widget build(BuildContext context) {
+-    final uri = Uri.https('www.google.com', '/s2/favicons', {
+-      'domain': domain,
+-      'sz': '256',
+-    });
+-    return Image.network(
+-      uri.toString(),
+-      fit: BoxFit.contain,
+-      filterQuality: FilterQuality.high,
+-      gaplessPlayback: true,
+-      errorBuilder: (_, __, ___) => fallback,
+-      loadingBuilder: (context, child, progress) => progress == null ? child : fallback,
+-    );
+-  }
+-}
+-
+ class _ForexPairMark extends StatelessWidget {
+   const _ForexPairMark({required this.symbol, required this.size});
+   final String symbol;
+@@ -218,13 +194,38 @@
+           boxShadow: const [BoxShadow(color: Color(0x24000000), blurRadius: 4)],
+         ),
+         clipBehavior: Clip.antiAlias,
+-        child: CountryFlag.fromCountryCode(
+-          country,
+-          theme: ImageTheme(width: diameter, height: diameter, shape: Circle()),
+-        ),
++        child: country == 'EU'
++            ? CustomPaint(painter: const _EuropeanUnionFlagPainter())
++            : CountryFlag.fromCountryCode(
++                country,
++                theme: ImageTheme(width: diameter, height: diameter, shape: Circle()),
++              ),
+       );
+ }
+ 
++class _EuropeanUnionFlagPainter extends CustomPainter {
++  const _EuropeanUnionFlagPainter();
++
++  @override
++  void paint(Canvas canvas, Size size) {
++    canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFF003399));
++    final center = size.center(Offset.zero);
++    final radius = size.shortestSide * 0.29;
++    final star = Paint()..color = const Color(0xFFFFCC00);
++    for (var index = 0; index < 12; index++) {
++      final angle = (index * 30 - 90) * 3.141592653589793 / 180;
++      canvas.drawCircle(
++        center + Offset(radius * math.cos(angle), radius * math.sin(angle)),
++        size.shortestSide * 0.035,
++        star,
++      );
++    }
++  }
++
++  @override
++  bool shouldRepaint(covariant _EuropeanUnionFlagPainter oldDelegate) => false;
++}
++
+ class _BrandOrVectorMark extends StatelessWidget {
+   const _BrandOrVectorMark({
+     required this.symbol,
+@@ -357,6 +358,32 @@
+   }
+ }
+ 
++/// Returns an authoritative bundled broker asset when one is available.
++/// All remaining catalogue entries deliberately use [BrokerIdentityLogo]'s
++/// deterministic vector fallback.
++String? brokerAssetForCode(String code) => _brokerAssets[code.trim().toLowerCase()];
++
++const _brokerAssets = <String, String>{
++  // Only bundled assets at least 96x96 are eligible as primary marks.
++  // Smaller legacy icons deliberately fall through to the vector fallback.
++  'xm': 'assets/brokers/xm.png',
++  'xm_group': 'assets/brokers/xm.png',
++  'ec_markets': 'assets/brokers/ec_markets.png',
++  'atfx': 'assets/brokers/atfx.png',
++  'axi': 'assets/brokers/axi.png',
++  'exness': 'assets/brokers/exness.png',
++  'forex_com': 'assets/brokers/forex_com.png',
++  'fxcm': 'assets/brokers/fxcm.png',
++  'go_markets': 'assets/brokers/go_markets.png',
++  'grand_capital': 'assets/brokers/grand_capital.png',
++  'm4markets': 'assets/brokers/m4markets.png',
++  'pepperstone': 'assets/brokers/pepperstone.png',
++  'tickmill': 'assets/brokers/tickmill.png',
++  'tmgm': 'assets/brokers/tmgm.png',
++  'weltrade': 'assets/brokers/weltrade.png',
++  'xtb': 'assets/brokers/xtb.png',
++};
++
+ const _currencyCountry = <String, String>{
+   'USD': 'US', 'EUR': 'EU', 'GBP': 'GB', 'JPY': 'JP', 'CHF': 'CH',
+   'CAD': 'CA', 'AUD': 'AU', 'NZD': 'NZ', 'ZAR': 'ZA', 'TRY': 'TR',
+--- a/lib/app/v56_native_shell.dart
++++ b/lib/app/v56_native_shell.dart
+@@ -1217,7 +1217,7 @@
+             code: broker?.code ?? normalized,
+             name: label,
+             logoDomain: broker?.logoDomain ?? '',
+-            localAsset: _brokerAssetFor(broker?.code ?? normalized),
++            localAsset: brokerAssetForCode(broker?.code ?? normalized),
+             size: 22,
+             accent: context.botx.accent,
+             border: context.botx.cardBorder,
+@@ -2892,7 +2892,7 @@
+         code: broker.code,
+         name: broker.name,
+         logoDomain: broker.logoDomain,
+-        localAsset: _brokerAssetFor(broker.code),
++        localAsset: brokerAssetForCode(broker.code),
+         size: 46,
+         accent: context.botx.accent,
+         border: context.botx.cardBorder,
+@@ -3935,30 +3935,7 @@
+   return null;
+ }
+ 
+-String? _brokerAssetFor(String code) {
+-  // Only assets that are large enough for high-density rendering remain local.
+-  // Smaller legacy favicons deliberately fall through to the 256 px domain
+-  // brand source and then to a vector fallback.
+-  const assets = <String, String>{
+-    'xm': 'assets/brokers/xm.png',
+-    'xm_group': 'assets/brokers/xm.png',
+-    'ec_markets': 'assets/brokers/ec_markets.png',
+-    'atfx': 'assets/brokers/atfx.png',
+-    'axi': 'assets/brokers/axi.png',
+-    'exness': 'assets/brokers/exness.png',
+-    'forex_com': 'assets/brokers/forex_com.png',
+-    'fxcm': 'assets/brokers/fxcm.png',
+-    'go_markets': 'assets/brokers/go_markets.png',
+-    'grand_capital': 'assets/brokers/grand_capital.png',
+-    'm4markets': 'assets/brokers/m4markets.png',
+-    'pepperstone': 'assets/brokers/pepperstone.png',
+-    'tickmill': 'assets/brokers/tickmill.png',
+-    'tmgm': 'assets/brokers/tmgm.png',
+-    'weltrade': 'assets/brokers/weltrade.png',
+-    'xtb': 'assets/brokers/xtb.png',
+-  };
+-  return assets[code.toLowerCase()];
+-}
++
+ 
+ String _brokerMark(String name) {
+   final words = name.replaceAll('_', ' ').split(RegExp(r'\s+')).where((value) => value.isNotEmpty).toList();
+--- a/lib/app/v16_app_controller.dart
++++ b/lib/app/v16_app_controller.dart
+@@ -516,6 +516,14 @@
+       final quoteQuery = Uri(queryParameters: {'accountId': account.id, 'symbol': symbol}).query;
+       final history = await _api.getJson('/v1/chart/history?$historyQuery');
+       final quote = await _api.getJson('/v1/chart/quote?$quoteQuery');
++      Map<String, dynamic> news = const <String, dynamic>{};
++      try {
++        final newsQuery = Uri(queryParameters: {'symbol': symbol, 'limit': '8'}).query;
++        news = await _api.getJson('/v1/market/news?$newsQuery');
++      } on ApiException {
++        // News is optional for chart continuity. The UI shows a truthful
++        // unavailable state and never substitutes generated headlines.
++      }
+       final times = history['t'] is List ? List<dynamic>.from(history['t'] as List) : const <dynamic>[];
+       final opens = history['o'] is List ? List<dynamic>.from(history['o'] as List) : const <dynamic>[];
+       final highs = history['h'] is List ? List<dynamic>.from(history['h'] as List) : const <dynamic>[];
+@@ -543,6 +551,9 @@
+         'spread': quoteValue['spread'],
+         'source': history['source'] ?? quote['source'],
+         'qualityState': history['qualityState'] ?? quote['qualityState'],
++        'news': news['items'] is List ? List<dynamic>.from(news['items'] as List) : const <dynamic>[],
++        'newsStatus': news['status'] ?? 'unavailable',
++        'newsTruthPolicy': news['truthPolicy'] ?? 'source-linked-only',
+       };
+       chartError = null;
+       await _chartRealtime.connect(accountId: account.id, symbol: symbol, resolution: resolution);
+--- a/lib/features/market/trading_view_contract.dart
++++ b/lib/features/market/trading_view_contract.dart
+@@ -5,6 +5,7 @@
+   static const historyPath = '/v1/chart/history';
+   static const quotePath = '/v1/chart/quote';
+   static const streamPath = '/v1/chart/stream';
++  static const newsPath = '/v1/market/news';
+ 
+   static bool isSupportedResolution(String value) => supportedResolutions.contains(value);
+ 
+--- a/test/market_identity_logo_test.dart
++++ b/test/market_identity_logo_test.dart
+@@ -1,4 +1,5 @@
+ import 'dart:convert';
++import 'dart:ui' as ui;
+ 
+ import 'package:botx_pro_v16/app/market_identity_logo.dart';
+ import 'package:flutter/material.dart';
+@@ -37,6 +38,57 @@
+     }
+   });
+ 
++  testWidgets('all 53 brokers render from bundled assets or vector fallback', (tester) async {
++    final raw = await rootBundle.loadString('assets/manifests/brokers.v16.json');
++    final decoded = jsonDecode(raw) as Map<String, dynamic>;
++    final brokers = (decoded['brokers'] as List).cast<Map<String, dynamic>>();
++    expect(brokers, hasLength(53));
++
++    for (final broker in brokers) {
++      final code = '${broker['code']}';
++      final name = '${broker['name']}';
++      await tester.pumpWidget(
++        MaterialApp(
++          home: Scaffold(
++            body: Center(
++              child: BrokerIdentityLogo(
++                key: ValueKey('broker-logo-$code'),
++                code: code,
++                name: name,
++                logoDomain: '${broker['logo_domain'] ?? ''}',
++                localAsset: brokerAssetForCode(code),
++                size: 56,
++              ),
++            ),
++          ),
++        ),
++      );
++      await tester.pump();
++      expect(find.byKey(ValueKey('broker-logo-$code')), findsOneWidget, reason: code);
++      expect(find.byType(Image), brokerAssetForCode(code) == null ? findsNothing : findsOneWidget, reason: code);
++      expect(tester.takeException(), isNull, reason: '$code / $name');
++    }
++  });
++
++  test('mapped primary broker assets are at least 96x96', () async {
++    final raw = await rootBundle.loadString('assets/manifests/brokers.v16.json');
++    final decoded = jsonDecode(raw) as Map<String, dynamic>;
++    final brokers = (decoded['brokers'] as List).cast<Map<String, dynamic>>();
++
++    for (final broker in brokers) {
++      final code = '${broker['code']}';
++      final asset = brokerAssetForCode(code);
++      if (asset == null) continue;
++      final data = await rootBundle.load(asset);
++      final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
++      final frame = await codec.getNextFrame();
++      expect(frame.image.width, greaterThanOrEqualTo(96), reason: '$code width');
++      expect(frame.image.height, greaterThanOrEqualTo(96), reason: '$code height');
++      frame.image.dispose();
++      codec.dispose();
++    }
++  });
++
+   testWidgets('broker vector fallback never renders blank', (tester) async {
+     await tester.pumpWidget(
+       const MaterialApp(
+--- a/test/chart_datafeed_contract_test.dart
++++ b/test/chart_datafeed_contract_test.dart
+@@ -6,6 +6,7 @@
+     expect(TradingViewContract.configPath, '/v1/chart/config');
+     expect(TradingViewContract.historyPath, '/v1/chart/history');
+     expect(TradingViewContract.streamPath, '/v1/chart/stream');
++    expect(TradingViewContract.newsPath, '/v1/market/news');
+     expect(TradingViewContract.isSupportedResolution('60'), isTrue);
+     expect(TradingViewContract.brokerSymbol('xauusd'), 'XAUUSD');
+   });

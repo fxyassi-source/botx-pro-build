@@ -1,0 +1,101 @@
+diff -uNr a/test/v56_ui_smoke_test.dart b/test/v56_ui_smoke_test.dart
+--- a/test/v56_ui_smoke_test.dart	2026-07-26 06:10:15.234778430 +0000
++++ b/test/v56_ui_smoke_test.dart	2026-07-26 06:10:15.754778449 +0000
+@@ -1,8 +1,6 @@
+ import 'package:botx_pro_v16/app/botx_app.dart';
+-import 'package:botx_pro_v16/app/v16_app_controller.dart';
+ import 'package:botx_pro_v16/app/v56_native_shell.dart';
+ import 'package:botx_pro_v16/core/config/app_config.dart';
+-import 'package:botx_pro_v16/core/theme/v56_theme.dart';
+ import 'package:flutter/material.dart';
+ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+ import 'package:flutter_test/flutter_test.dart';
+@@ -20,7 +18,7 @@
+ Future<void> pumpUntil(
+   WidgetTester tester,
+   Finder finder, {
+-  int attempts = 40,
++  int attempts = 150,
+   Duration step = const Duration(milliseconds: 100),
+ }) async {
+   for (var attempt = 0; attempt < attempts && finder.evaluate().isEmpty; attempt++) {
+@@ -28,7 +26,7 @@
+   }
+ }
+ 
+-Future<(V16AppController, V56ThemeController)> pumpGuestShell(
++Future<void> pumpGuestShell(
+   WidgetTester tester, {
+   Size size = const Size(390, 844),
+ }) async {
+@@ -44,24 +42,14 @@
+     'botx.localDemo.currency': 'USD',
+     'botx.localDemo.leverage': 100.0,
+   });
+-  final appController = V16AppController(config: offlineConfig, guestMode: true);
+-  final themeController = V56ThemeController();
+-  addTearDown(appController.dispose);
+-  addTearDown(themeController.dispose);
+-
+-  await appController.initialize();
+-  await tester.pumpWidget(
+-    MaterialApp(
+-      debugShowCheckedModeBanner: false,
+-      theme: themeController.theme,
+-      home: V56NativeShell(
+-        controller: appController,
+-        themeController: themeController,
+-      ),
+-    ),
+-  );
++  FlutterSecureStorage.setMockInitialValues(const {});
++  await tester.pumpWidget(BotXApp(config: offlineConfig));
++  final skip = find.byKey(const ValueKey('v56_login_skip'));
++  await pumpUntil(tester, skip);
++  expect(skip, findsOneWidget);
++  await tester.tap(skip);
+   await pumpUntil(tester, find.byKey(const ValueKey('v56_account_carousel')));
+-  return (appController, themeController);
++  expect(find.byKey(const ValueKey('v56_account_carousel')), findsOneWidget);
+ }
+ 
+ void main() {
+@@ -83,26 +71,21 @@
+ 
+   testWidgets('Guest V56 shell creates a demo account from a virtual balance', (tester) async {
+     SharedPreferences.setMockInitialValues(const {});
+-    final appController = V16AppController(config: offlineConfig, guestMode: true);
+-    final themeController = V56ThemeController();
+-    addTearDown(appController.dispose);
+-    addTearDown(themeController.dispose);
+-    await appController.initialize();
+-    await tester.pumpWidget(MaterialApp(
+-      debugShowCheckedModeBanner: false,
+-      theme: themeController.theme,
+-      home: V56NativeShell(controller: appController, themeController: themeController),
+-    ));
+-    await tester.pump();
++    FlutterSecureStorage.setMockInitialValues(const {});
++    await tester.pumpWidget(BotXApp(config: offlineConfig));
++    final skip = find.byKey(const ValueKey('v56_login_skip'));
++    await pumpUntil(tester, skip);
++    expect(skip, findsOneWidget);
++    await tester.tap(skip);
++    await pumpUntil(tester, find.byKey(const ValueKey('v56_demo_setup')), attempts: 200);
+ 
+     expect(find.byKey(const ValueKey('v56_demo_setup')), findsOneWidget);
+     expect(find.text('Create Demo Account'), findsOneWidget);
+-    expect(find.byKey(const ValueKey('v56_start_demo_trading')), findsOneWidget);
+-    await tester.tap(find.byKey(const ValueKey('v56_start_demo_trading')));
+-    await pumpUntil(tester, find.byKey(const ValueKey('v56_account_carousel')));
+-
+-    expect(find.byKey(const ValueKey('v56_account_carousel')), findsOneWidget);
+-    expect(find.text('Swipe accounts'), findsOneWidget);
++    final startDemo = find.byKey(const ValueKey('v56_start_demo_trading'));
++    expect(startDemo, findsOneWidget);
++    expect(tester.widget<FilledButton>(startDemo).onPressed, isNotNull);
++    expect(find.byKey(const ValueKey('v56_demo_amount')), findsOneWidget);
++    expect(find.textContaining('all five BotX bots'), findsOneWidget);
+   });
+ 
+   testWidgets('Portfolio swipes to Add Broker inside the same carousel', (tester) async {

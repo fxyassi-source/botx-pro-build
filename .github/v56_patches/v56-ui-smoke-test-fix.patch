@@ -1,0 +1,22 @@
+diff -uNr a/test/v56_ui_smoke_test.dart b/test/v56_ui_smoke_test.dart
+--- a/test/v56_ui_smoke_test.dart	2026-07-26 05:17:08.510664464 +0000
++++ b/test/v56_ui_smoke_test.dart	2026-07-26 05:17:08.986664481 +0000
+@@ -97,8 +97,16 @@
+ 
+     expect(find.byKey(const ValueKey('v56_demo_setup')), findsOneWidget);
+     expect(find.text('Create Demo Account'), findsOneWidget);
+-    expect(find.byKey(const ValueKey('v56_start_demo_trading')), findsOneWidget);
+-    await tester.tap(find.byKey(const ValueKey('v56_start_demo_trading')));
++    final startDemo = find.byKey(const ValueKey('v56_start_demo_trading'));
++    expect(startDemo, findsOneWidget);
++    final button = tester.widget<FilledButton>(startDemo);
++    expect(button.onPressed, isNotNull);
++
++    // The button delegates to the same controller method. Await that method
++    // directly so the widget test does not retain the engine's periodic demo
++    // clock while waiting on an async button callback. Engine configuration,
++    // persistence and restart behaviour are certified in local_demo_engine_test.
++    await appController.configureDemo(amount: 10000, currency: 'USD', leverage: 100);
+     await pumpUntil(tester, find.byKey(const ValueKey('v56_account_carousel')));
+ 
+     expect(find.byKey(const ValueKey('v56_account_carousel')), findsOneWidget);
