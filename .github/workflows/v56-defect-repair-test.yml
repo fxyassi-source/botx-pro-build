@@ -22,7 +22,7 @@ jobs:
       DISPOSE_SHA: 31c075d5d1388b7681b6f96e7a5c391be7d408ad42f801584372c8a74cd9562c
       UI_SHA: 01bcfb500fa179225ea3c65c0cf5169f1009761707702c5a2a9b4d5ebfaff368
       VISUAL_SHA: 7b67d331e6c0e31d6a49feb5a65619dbad142f4c39e66a6f0dccf37fb8823bba
-      DEFECT_PATCH_FILE_ID: 1HkGGzGM8RUy0hK6wPOUKj6f5thCUyb78
+      DEFECT_PATCH_GZIP_SHA256: 170f20199855431f681c99fc2295946bd90b15d22e8f9ff0101aba773ad94d59
       DEFECT_PATCH_SHA256: 1d08d5f196b5e88582dd8c1afe41c2d1ae7556dd1c8ef0c6bc2c7116ba368e06
 
     steps:
@@ -69,13 +69,19 @@ jobs:
           grep -F 'version: 56.0.0+5600' pubspec.yaml
           grep -F 'class V56NativeShell' lib/app/v56_native_shell.dart
 
-      - name: 4. Download and apply numbered-defect patch
+      - name: 4. Apply immutable numbered-defect patch
         shell: bash
         run: |
           set -euo pipefail
+          PATCH_REF="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
           curl --fail --location --retry 5 --retry-delay 3 \
-            "https://drive.usercontent.google.com/download?id=${DEFECT_PATCH_FILE_ID}&export=download&confirm=t" \
-            -o "$RUNNER_TEMP/v56/defect-repair.patch"
+            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${PATCH_REF}/.github/v56_patches/v56-numbered-defect-repair.patch.gz.b64" \
+            -o "$RUNNER_TEMP/v56/defect-repair.patch.gz.b64"
+          base64 --decode "$RUNNER_TEMP/v56/defect-repair.patch.gz.b64" \
+            > "$RUNNER_TEMP/v56/defect-repair.patch.gz"
+          echo "${DEFECT_PATCH_GZIP_SHA256}  $RUNNER_TEMP/v56/defect-repair.patch.gz" | sha256sum --check --strict
+          gzip -dc "$RUNNER_TEMP/v56/defect-repair.patch.gz" \
+            > "$RUNNER_TEMP/v56/defect-repair.patch"
           echo "${DEFECT_PATCH_SHA256}  $RUNNER_TEMP/v56/defect-repair.patch" | sha256sum --check --strict
           cd "$GITHUB_WORKSPACE/app"
           patch --batch --forward -p1 < "$RUNNER_TEMP/v56/defect-repair.patch"
