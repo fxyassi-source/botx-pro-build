@@ -119,7 +119,7 @@
  class _BrandOrVectorMark extends StatelessWidget {
    const _BrandOrVectorMark({
      required this.symbol,
-@@ -357,6 +358,46 @@
+@@ -357,6 +358,32 @@
    }
  }
  
@@ -129,38 +129,24 @@
 +String? brokerAssetForCode(String code) => _brokerAssets[code.trim().toLowerCase()];
 +
 +const _brokerAssets = <String, String>{
++  // Only bundled assets at least 96x96 are eligible as primary marks.
++  // Smaller legacy icons deliberately fall through to the vector fallback.
 +  'xm': 'assets/brokers/xm.png',
 +  'xm_group': 'assets/brokers/xm.png',
 +  'ec_markets': 'assets/brokers/ec_markets.png',
-+  'activtrades': 'assets/brokers/activtrades.png',
-+  'acy_securities': 'assets/brokers/acy.png',
-+  'alpari': 'assets/brokers/alpari.png',
-+  'amarkets': 'assets/brokers/amarkets.png',
 +  'atfx': 'assets/brokers/atfx.png',
-+  'avatrade': 'assets/brokers/avatrade.png',
 +  'axi': 'assets/brokers/axi.png',
 +  'exness': 'assets/brokers/exness.png',
-+  'fbs': 'assets/brokers/fbs.png',
 +  'forex_com': 'assets/brokers/forex_com.png',
 +  'fxcm': 'assets/brokers/fxcm.png',
-+  'fxpro': 'assets/brokers/fxpro.png',
-+  'fxtm': 'assets/brokers/fxtm.png',
 +  'go_markets': 'assets/brokers/go_markets.png',
 +  'grand_capital': 'assets/brokers/grand_capital.png',
-+  'hf_markets': 'assets/brokers/hf_markets.png',
-+  'ic_markets': 'assets/brokers/ic_markets.png',
 +  'm4markets': 'assets/brokers/m4markets.png',
 +  'pepperstone': 'assets/brokers/pepperstone.png',
-+  'roboforex': 'assets/brokers/roboforex.png',
 +  'tickmill': 'assets/brokers/tickmill.png',
 +  'tmgm': 'assets/brokers/tmgm.png',
-+  'traders_way': 'assets/brokers/traders_way.png',
-+  'vantage': 'assets/brokers/vantage.png',
-+  'vt_markets': 'assets/brokers/vt_markets.png',
 +  'weltrade': 'assets/brokers/weltrade.png',
-+  'windsor_brokers': 'assets/brokers/windsor.png',
 +  'xtb': 'assets/brokers/xtb.png',
-+  'zero_markets': 'assets/brokers/zero_markets.png',
 +};
 +
  const _currencyCountry = <String, String>{
@@ -257,7 +243,13 @@
  
 --- a/test/market_identity_logo_test.dart
 +++ b/test/market_identity_logo_test.dart
-@@ -37,6 +37,38 @@
+@@ -1,4 +1,5 @@
+ import 'dart:convert';
++import 'dart:ui' as ui;
+ 
+ import 'package:botx_pro_v16/app/market_identity_logo.dart';
+ import 'package:flutter/material.dart';
+@@ -37,6 +38,57 @@
      }
    });
  
@@ -290,6 +282,25 @@
 +      expect(find.byKey(ValueKey('broker-logo-$code')), findsOneWidget, reason: code);
 +      expect(find.byType(Image), brokerAssetForCode(code) == null ? findsNothing : findsOneWidget, reason: code);
 +      expect(tester.takeException(), isNull, reason: '$code / $name');
++    }
++  });
++
++  test('mapped primary broker assets are at least 96x96', () async {
++    final raw = await rootBundle.loadString('assets/manifests/brokers.v16.json');
++    final decoded = jsonDecode(raw) as Map<String, dynamic>;
++    final brokers = (decoded['brokers'] as List).cast<Map<String, dynamic>>();
++
++    for (final broker in brokers) {
++      final code = '${broker['code']}';
++      final asset = brokerAssetForCode(code);
++      if (asset == null) continue;
++      final data = await rootBundle.load(asset);
++      final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
++      final frame = await codec.getNextFrame();
++      expect(frame.image.width, greaterThanOrEqualTo(96), reason: '$code width');
++      expect(frame.image.height, greaterThanOrEqualTo(96), reason: '$code height');
++      frame.image.dispose();
++      codec.dispose();
 +    }
 +  });
 +
