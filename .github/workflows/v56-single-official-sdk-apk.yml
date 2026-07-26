@@ -1,11 +1,9 @@
 name: BotX Pro V56 Single APK Build
 
 on:
-  push:
+  pull_request:
     branches:
-      - v56-targeted-apk-build-20260726
-    paths:
-      - .github/v56_single_apk_trigger.txt
+      - v56-build-base-20260726
   workflow_dispatch:
 
 permissions:
@@ -104,7 +102,7 @@ jobs:
           cp "$SRC_ROOT/test/market_identity_logo_test.dart" "$GITHUB_WORKSPACE/app/test/market_identity_logo_test.dart"
           cp "$SRC_ROOT/test/v56_ui_smoke_test.dart" "$GITHUB_WORKSPACE/app/test/v56_ui_smoke_test.dart"
 
-          REF="${GITHUB_REF_NAME}"
+          REF="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
           curl --fail --location --retry 5 --retry-delay 3 \
             "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${REF}/.github/v56_targeted/pubspec.yaml" \
             -o "$GITHUB_WORKSPACE/app/pubspec.yaml"
