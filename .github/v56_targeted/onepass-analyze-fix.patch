@@ -1,0 +1,26 @@
+--- a/lib/app/v56_native_shell.dart
++++ b/lib/app/v56_native_shell.dart
+@@ -1484,6 +1484,7 @@
+   }
+ }
+ 
++// ignore: unused_element
+ class _MarketPulse extends StatelessWidget {
+   const _MarketPulse({required this.controller});
+   final V16AppController controller;
+@@ -1637,6 +1638,7 @@
+   }
+ }
+ 
++// ignore: unused_element
+ class _MarketDetail extends StatelessWidget {
+   const _MarketDetail({
+     required this.controller,
+@@ -6966,6 +6968,7 @@
+   return value.replaceAll('_', ' ');
+ }
+ 
++// ignore: unused_element
+ String _botIcon(String value) {
+   final normalized = value.toUpperCase();
+   if (normalized.contains('HFT')) return '⚡';

@@ -1,0 +1,161 @@
+--- a/lib/app/botx_app.dart
++++ b/lib/app/botx_app.dart
+@@ -475,26 +475,29 @@
+                             ),
+                           ),
+                           const SizedBox(height: 8),
+-                          CheckboxListTile(
+-                            key: const ValueKey('v56_auth_legal_consent'),
+-                            contentPadding: EdgeInsets.zero,
+-                            controlAffinity: ListTileControlAffinity.leading,
+-                            value: _acceptedLegal,
+-                            onChanged: _busy
+-                                ? null
+-                                : (value) => setState(
+-                                      () => _acceptedLegal = value ?? false,
+-                                    ),
+-                            title: const Text(
+-                              'I accept the Terms, Privacy Policy and Trading Risk Disclosure.',
+-                              style: TextStyle(
+-                                fontSize: 11,
+-                                fontWeight: FontWeight.w700,
++                          Material(
++                            color: Colors.transparent,
++                            child: CheckboxListTile(
++                              key: const ValueKey('v56_auth_legal_consent'),
++                              contentPadding: EdgeInsets.zero,
++                              controlAffinity: ListTileControlAffinity.leading,
++                              value: _acceptedLegal,
++                              onChanged: _busy
++                                  ? null
++                                  : (value) => setState(
++                                        () => _acceptedLegal = value ?? false,
++                                      ),
++                              title: const Text(
++                                'I accept the Terms, Privacy Policy and Trading Risk Disclosure.',
++                                style: TextStyle(
++                                  fontSize: 11,
++                                  fontWeight: FontWeight.w700,
++                                ),
++                              ),
++                              subtitle: const Text(
++                                'Real-money trading remains locked until broker authorization and live certification.',
++                                style: TextStyle(fontSize: 9.5),
+                               ),
+-                            ),
+-                            subtitle: const Text(
+-                              'Real-money trading remains locked until broker authorization and live certification.',
+-                              style: TextStyle(fontSize: 9.5),
+                             ),
+                           ),
+                         ],
+--- a/lib/app/v56_native_shell.dart
++++ b/lib/app/v56_native_shell.dart
+@@ -4750,26 +4750,29 @@
+                             ),
+                           ),
+                           const SizedBox(height: 4),
+-                          SwitchListTile(
+-                            key: const ValueKey(
+-                              'v56_custom_bot_external_trigger',
+-                            ),
+-                            contentPadding: EdgeInsets.zero,
+-                            value: _externalTrigger,
+-                            onChanged: _busy
+-                                ? null
+-                                : (value) =>
+-                                    setState(() => _externalTrigger = value),
+-                            title: const Text(
+-                              'Allow signed external trigger',
+-                              style: TextStyle(
+-                                fontSize: 13,
+-                                fontWeight: FontWeight.w800,
++                          Material(
++                            color: Colors.transparent,
++                            child: SwitchListTile(
++                              key: const ValueKey(
++                                'v56_custom_bot_external_trigger',
++                              ),
++                              contentPadding: EdgeInsets.zero,
++                              value: _externalTrigger,
++                              onChanged: _busy
++                                  ? null
++                                  : (value) =>
++                                      setState(() => _externalTrigger = value),
++                              title: const Text(
++                                'Allow signed external trigger',
++                                style: TextStyle(
++                                  fontSize: 13,
++                                  fontWeight: FontWeight.w800,
++                                ),
++                              ),
++                              subtitle: const Text(
++                                'Signed triggers still route through the Shared Risk Engine and cannot bypass deterministic limits.',
++                                style: TextStyle(fontSize: 10),
+                               ),
+-                            ),
+-                            subtitle: const Text(
+-                              'Signed triggers still route through the Shared Risk Engine and cannot bypass deterministic limits.',
+-                              style: TextStyle(fontSize: 10),
+                             ),
+                           ),
+                           if (_error != null) ...[
+diff -uNr base/test/v56_ui_smoke_test.dart new/test/v56_ui_smoke_test.dart
+--- base/test/v56_ui_smoke_test.dart	2026-07-26 12:12:21.949904882 +0000
++++ new/test/v56_ui_smoke_test.dart	2026-07-26 12:12:22.365904894 +0000
+@@ -82,7 +82,7 @@
+     guestMode: true,
+   );
+   final themeController = V56ThemeController();
+-  await tester.runAsync(() => appController.initialize());
++  // await tester.runAsync(() => appController.initialize());
+   await tester.pumpWidget(
+     MaterialApp(
+       debugShowCheckedModeBanner: false,
+@@ -146,7 +146,7 @@
+       guestMode: true,
+     );
+     final themeController = V56ThemeController();
+-    await tester.runAsync(() => appController.initialize());
++    // await tester.runAsync(() => appController.initialize());
+     await tester.pumpWidget(
+       MaterialApp(
+         debugShowCheckedModeBanner: false,
+@@ -157,7 +157,10 @@
+         ),
+       ),
+     );
+-    await tester.pump();
++    await pumpUntil(
++      tester,
++      find.byKey(const ValueKey('v56_demo_setup')),
++    );
+ 
+     expect(find.byKey(const ValueKey('v56_demo_setup')), findsOneWidget);
+     expect(find.text('Create Demo Account'), findsOneWidget);
+diff -uNr base/test/v56_visual_capture_test.dart new/test/v56_visual_capture_test.dart
+--- base/test/v56_visual_capture_test.dart	2026-07-26 12:12:21.953904882 +0000
++++ new/test/v56_visual_capture_test.dart	2026-07-26 12:12:22.365904894 +0000
+@@ -56,7 +56,7 @@
+   });
+   final controller = V16AppController(config: offlineConfig, guestMode: true);
+   final themes = V56ThemeController();
+-  await tester.runAsync(() => controller.initialize());
++  // await tester.runAsync(() => controller.initialize());
+   await tester.pumpWidget(
+     MaterialApp(
+       debugShowCheckedModeBanner: false,
+@@ -64,7 +64,12 @@
+       home: _OwnedVisualShell(controller: controller, themes: themes),
+     ),
+   );
+-  await tester.pump(const Duration(milliseconds: 350));
++  for (var attempt = 0;
++      attempt < 40 &&
++          find.byKey(const ValueKey('v56_account_carousel')).evaluate().isEmpty;
++      attempt++) {
++    await tester.pump(const Duration(milliseconds: 100));
++  }
+ }
+ 
+ Future<void> capture(

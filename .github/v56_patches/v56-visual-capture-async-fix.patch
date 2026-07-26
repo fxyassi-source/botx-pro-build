@@ -1,0 +1,80 @@
+diff -uNr a/test/v56_visual_capture_test.dart b/test/v56_visual_capture_test.dart
+--- a/test/v56_visual_capture_test.dart	2026-07-26 06:25:54.702812028 +0000
++++ b/test/v56_visual_capture_test.dart	2026-07-26 06:25:55.174812045 +0000
+@@ -14,7 +14,33 @@
+   backendConfigured: false,
+ );
+ 
+-Future<(V16AppController, V56ThemeController)> pumpV56(
++
++class _OwnedVisualShell extends StatefulWidget {
++  const _OwnedVisualShell({required this.controller, required this.themes});
++  final V16AppController controller;
++  final V56ThemeController themes;
++
++  @override
++  State<_OwnedVisualShell> createState() => _OwnedVisualShellState();
++}
++
++class _OwnedVisualShellState extends State<_OwnedVisualShell> {
++  @override
++  void dispose() {
++    widget.controller.dispose();
++    widget.themes.dispose();
++    super.dispose();
++  }
++
++  @override
++  Widget build(BuildContext context) => RepaintBoundary(
++        key: const ValueKey('v56_visual_root'),
++        child: V56NativeShell(controller: widget.controller, themeController: widget.themes),
++      );
++}
++
++
++Future<void> pumpV56(
+   WidgetTester tester,
+   Size size,
+ ) async {
+@@ -30,18 +56,15 @@
+   });
+   final controller = V16AppController(config: offlineConfig, guestMode: true);
+   final themes = V56ThemeController();
++  await tester.runAsync(() => controller.initialize());
+   await tester.pumpWidget(
+     MaterialApp(
+       debugShowCheckedModeBanner: false,
+       theme: themes.theme,
+-      home: RepaintBoundary(
+-        key: const ValueKey('v56_visual_root'),
+-        child: V56NativeShell(controller: controller, themeController: themes),
+-      ),
++      home: _OwnedVisualShell(controller: controller, themes: themes),
+     ),
+   );
+   await tester.pump(const Duration(milliseconds: 350));
+-  return (controller, themes);
+ }
+ 
+ Future<void> capture(
+@@ -64,9 +87,7 @@
+     ('428x928', const Size(428, 928)),
+   ]) {
+     testWidgets('capture dashboard ${entry.$1}', (tester) async {
+-      final resources = await pumpV56(tester, entry.$2);
+-      addTearDown(resources.$1.dispose);
+-      addTearDown(resources.$2.dispose);
++      await pumpV56(tester, entry.$2);
+       addTearDown(tester.view.resetPhysicalSize);
+       addTearDown(tester.view.resetDevicePixelRatio);
+       await capture(tester, 'v56_dashboard_${entry.$1}');
+@@ -74,9 +95,7 @@
+   }
+ 
+   testWidgets('capture market bots and settings at 390x844', (tester) async {
+-    final resources = await pumpV56(tester, const Size(390, 844));
+-    addTearDown(resources.$1.dispose);
+-    addTearDown(resources.$2.dispose);
++    await pumpV56(tester, const Size(390, 844));
+     addTearDown(tester.view.resetPhysicalSize);
+     addTearDown(tester.view.resetDevicePixelRatio);

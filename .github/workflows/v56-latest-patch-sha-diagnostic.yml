@@ -1,0 +1,33 @@
+name: BotX Pro V56 Latest Patch SHA Diagnostic
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  patch-sha:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fetch and hash latest UI and visual patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 5 --retry-delay 2 \
+            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/v56_patches/v56-ui-smoke-test-fix-v9-clean.patch" \
+            -o "$RUNNER_TEMP/ui.patch"
+          curl --fail --location --retry 5 --retry-delay 2 \
+            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/v56_patches/v56-visual-capture-async-fix.patch" \
+            -o "$RUNNER_TEMP/visual.patch"
+          sha256sum "$RUNNER_TEMP/ui.patch" "$RUNNER_TEMP/visual.patch" | tee "$RUNNER_TEMP/latest-patch-sha.txt"
+          wc -c "$RUNNER_TEMP/ui.patch" "$RUNNER_TEMP/visual.patch" | tee -a "$RUNNER_TEMP/latest-patch-sha.txt"
+
+      - name: Upload checksum output
+        uses: actions/upload-artifact@v4
+        with:
+          name: botx-pro-v56-latest-patch-sha
+          path: ${{ runner.temp }}/latest-patch-sha.txt
