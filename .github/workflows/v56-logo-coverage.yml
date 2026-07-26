@@ -47,10 +47,10 @@ jobs:
             "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/v56_patches/v56-demo-certification-fix.patch" \
             --output "$RUNNER_TEMP/v56/demo-certification.patch"
           curl --fail --location --retry 5 --retry-delay 3 \
-            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/v56_patches/v56-logo-test-optimization-v6.patch" \
+            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/v56_patches/v56-logo-test-optimization-v7.patch" \
             --output "$RUNNER_TEMP/v56/logo-test-optimization.patch"
           echo "bd74e5546206dfd1c41ccf967c2ee5105a8ca9ebcfa53e3d88bbb4269b95b076  $RUNNER_TEMP/v56/demo-certification.patch" | sha256sum --check --strict
-          echo "64013599e4f990c211b1e699b96708e438cabc30a7a981662d126db9960fc41a  $RUNNER_TEMP/v56/logo-test-optimization.patch" | sha256sum --check --strict
+          echo "55cb6efb6c0879e2cb15e235a86ae645a29123a81136f26cae302e2b97465bb8  $RUNNER_TEMP/v56/logo-test-optimization.patch" | sha256sum --check --strict
           cd "$GITHUB_WORKSPACE/app"
           patch --batch --forward -p1 < "$RUNNER_TEMP/v56/reconstruction.patch"
           patch --batch --forward -p1 < "$RUNNER_TEMP/v56/demo-certification.patch"
