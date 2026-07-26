@@ -1,0 +1,98 @@
+--- a/lib/app/local_demo_engine.dart
++++ b/lib/app/local_demo_engine.dart
+@@ -105,15 +105,19 @@
+   void command(String botId, String command) {
+     final bot = _findBot(botId);
+     if (bot == null) throw StateError('Demo bot not found.');
+-    if (command.contains('pause')) bot['state'] = 'paused';
+-    if (command.contains('resume')) bot['state'] = 'running';
+-    if (command.contains('stop')) {
+-      bot['state'] = 'stopped';
+-      _closeBotPositions(botId, 'user_stop');
+-    }
+-    if (command.contains('emergency')) {
++    final normalized = command.trim().toLowerCase();
++    if (normalized.contains('emergency')) {
+       bot['state'] = 'stopped';
+       _closeBotPositions(botId, 'emergency_stop');
++    } else if (normalized.contains('stop')) {
++      bot['state'] = 'stopped';
++      _closeBotPositions(botId, 'user_stop');
++    } else if (normalized.contains('pause')) {
++      bot['state'] = 'paused';
++    } else if (normalized.contains('resume')) {
++      bot['state'] = 'running';
++    } else {
++      throw StateError('Unsupported demo bot command.');
+     }
+     _emit();
+   }
+--- a/test/local_demo_engine_test.dart
++++ b/test/local_demo_engine_test.dart
+@@ -6,12 +6,13 @@
+ void main() {
+   TestWidgetsFlutterBinding.ensureInitialized();
+ 
+-  test('local demo accepts a virtual balance and runs every bot family', () async {
++  test('local demo certifies all five bot families and emergency-stop semantics', () async {
+     SharedPreferences.setMockInitialValues(const {});
+     Map<String, dynamic> latest = const {};
+     final engine = LocalDemoEngine(onChanged: (snapshot) => latest = snapshot);
+ 
+     await engine.configure(amount: 25000, currency: 'USD', leverage: 100);
++    final botIds = <String, String>{};
+     for (final bot in const [
+       ('AI_INSTITUTIONAL', 'AI Institutional'),
+       ('INSTITUTIONAL_HFT', 'Institutional HFT'),
+@@ -19,18 +20,48 @@
+       ('GRID', 'Grid'),
+       ('CUSTOM', 'Create My Own Bot'),
+     ]) {
+-      engine.startBot(botType: bot.$1, displayName: bot.$2, symbol: 'XAUUSD');
++      final started = engine.startBot(botType: bot.$1, displayName: bot.$2, symbol: 'XAUUSD');
++      botIds[bot.$1] = '${started['botInstanceId']}';
+     }
+ 
+-    engine.advanceForTest(80);
++    engine.advanceForTest(240);
+ 
+     expect(latest['practiceFeed'], isTrue);
+     expect((latest['brokerAccounts'] as List).length, 1);
+-    expect((latest['bots'] as List).length, 5);
++    final bots = (latest['bots'] as List).cast<Map<String, dynamic>>();
++    expect(bots, hasLength(5));
++    for (final bot in bots) {
++      expect((bot['trades'] as num).toInt(), greaterThan(0), reason: '${bot['display_name']} must close at least one demo trade');
++      expect((bot['closedTrades'] as List), isNotEmpty, reason: '${bot['display_name']} needs trade-wise history');
++      expect(bot['environment'], 'paper');
++    }
+     expect((latest['openOrders'] as List).length + (latest['closedOrders'] as List).length, greaterThan(0));
+     expect((latest['account'] as Map)['environment'], 'paper');
+     expect((latest['account'] as Map)['equity'], isA<num>());
+ 
++    final aiId = botIds['AI_INSTITUTIONAL']!;
++    engine.command(aiId, 'pause');
++    expect(((latest['bots'] as List).cast<Map<String, dynamic>>().firstWhere((bot) => bot['id'] == aiId))['state'], 'paused');
++    engine.command(aiId, 'resume');
++    expect(((latest['bots'] as List).cast<Map<String, dynamic>>().firstWhere((bot) => bot['id'] == aiId))['state'], 'running');
++
++    final hftId = botIds['INSTITUTIONAL_HFT']!;
++    var hftOpen = ((latest['bots'] as List).cast<Map<String, dynamic>>().firstWhere((bot) => bot['id'] == hftId)['openPositions'] as List);
++    for (var index = 0; index < 20 && hftOpen.isEmpty; index++) {
++      engine.advanceForTest(1);
++      hftOpen = ((latest['bots'] as List).cast<Map<String, dynamic>>().firstWhere((bot) => bot['id'] == hftId)['openPositions'] as List);
++    }
++    expect(hftOpen, isNotEmpty);
++    engine.command(hftId, 'emergency_stop');
++    final stoppedHft = (latest['bots'] as List).cast<Map<String, dynamic>>().firstWhere((bot) => bot['id'] == hftId);
++    expect(stoppedHft['state'], 'stopped');
++    expect(stoppedHft['openPositions'], isEmpty);
++    expect(
++      (stoppedHft['closedTrades'] as List).cast<Map<String, dynamic>>().any((trade) => trade['close_reason'] == 'emergency_stop'),
++      isTrue,
++    );
++
++    expect(() => engine.command(aiId, 'delete_everything'), throwsStateError);
+     engine.dispose();
+   });
+ }
