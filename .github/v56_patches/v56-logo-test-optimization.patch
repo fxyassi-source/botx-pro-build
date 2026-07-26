@@ -1,0 +1,115 @@
+--- a/test/market_identity_logo_test.dart
++++ b/test/market_identity_logo_test.dart
+@@ -15,27 +15,35 @@
+     final symbols = (decoded['symbols'] as List).cast<Map<String, dynamic>>();
+     expect(symbols, hasLength(204));
+ 
+-    for (final item in symbols) {
+-      final symbol = '${item['canonical']}';
+-      final category = '${item['category']}';
+-      await tester.pumpWidget(
+-        MaterialApp(
+-          home: Scaffold(
+-            body: Center(
+-              child: MarketIdentityLogo(
+-                key: ValueKey('logo-$symbol'),
+-                symbol: symbol,
+-                category: category,
+-                size: 56,
+-              ),
++    await tester.pumpWidget(
++      MaterialApp(
++        home: Scaffold(
++          body: SingleChildScrollView(
++            child: Wrap(
++              children: [
++                for (final item in symbols)
++                  SizedBox(
++                    width: 60,
++                    height: 60,
++                    child: MarketIdentityLogo(
++                      key: ValueKey('logo-${item['canonical']}'),
++                      symbol: '${item['canonical']}',
++                      category: '${item['category']}',
++                      size: 56,
++                    ),
++                  ),
++              ],
+             ),
+           ),
+         ),
+-      );
+-      await tester.pump();
++      ),
++    );
++    await tester.pump();
++    for (final item in symbols) {
++      final symbol = '${item['canonical']}';
+       expect(find.byKey(ValueKey('logo-$symbol')), findsOneWidget, reason: symbol);
+-      expect(tester.takeException(), isNull, reason: '$symbol / $category');
+     }
++    expect(tester.takeException(), isNull);
+   });
+ 
+   testWidgets('all 53 brokers render from bundled assets or vector fallback', (tester) async {
+@@ -44,30 +52,41 @@
+     final brokers = (decoded['brokers'] as List).cast<Map<String, dynamic>>();
+     expect(brokers, hasLength(53));
+ 
+-    for (final broker in brokers) {
+-      final code = '${broker['code']}';
+-      final name = '${broker['name']}';
+-      await tester.pumpWidget(
+-        MaterialApp(
+-          home: Scaffold(
+-            body: Center(
+-              child: BrokerIdentityLogo(
+-                key: ValueKey('broker-logo-$code'),
+-                code: code,
+-                name: name,
+-                logoDomain: '${broker['logo_domain'] ?? ''}',
+-                localAsset: brokerAssetForCode(code),
+-                size: 56,
+-              ),
++    await tester.pumpWidget(
++      MaterialApp(
++        home: Scaffold(
++          body: SingleChildScrollView(
++            child: Wrap(
++              children: [
++                for (final broker in brokers)
++                  SizedBox(
++                    width: 60,
++                    height: 60,
++                    child: BrokerIdentityLogo(
++                      key: ValueKey('broker-logo-${broker['code']}'),
++                      code: '${broker['code']}',
++                      name: '${broker['name']}',
++                      logoDomain: '${broker['logo_domain'] ?? ''}',
++                      localAsset: brokerAssetForCode('${broker['code']}'),
++                      size: 56,
++                    ),
++                  ),
++              ],
+             ),
+           ),
+         ),
+-      );
+-      await tester.pump();
++      ),
++    );
++    await tester.pump();
++    for (final broker in brokers) {
++      final code = '${broker['code']}';
+       expect(find.byKey(ValueKey('broker-logo-$code')), findsOneWidget, reason: code);
+-      expect(find.byType(Image), brokerAssetForCode(code) == null ? findsNothing : findsOneWidget, reason: code);
+-      expect(tester.takeException(), isNull, reason: '$code / $name');
+     }
++    expect(
++      find.byType(Image),
++      findsNWidgets(brokers.where((broker) => brokerAssetForCode('${broker['code']}') != null).length),
++    );
++    expect(tester.takeException(), isNull);
+   });
+ 
+   test('mapped primary broker assets are at least 96x96', () async {
