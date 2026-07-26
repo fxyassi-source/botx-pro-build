@@ -1,0 +1,14 @@
+diff -uNr a/lib/app/local_demo_engine.dart b/lib/app/local_demo_engine.dart
+--- a/lib/app/local_demo_engine.dart	2026-07-26 05:25:42.434682843 +0000
++++ b/lib/app/local_demo_engine.dart	2026-07-26 05:25:42.946682862 +0000
+@@ -617,6 +617,9 @@
+ 
+   void dispose() {
+     _timer?.cancel();
+-    unawaited(_persistState());
++    _timer = null;
++    // Do not start asynchronous storage work after disposal. Configuration,
++    // commands and the periodic checkpoint already persist state; callers that
++    // require an immediate durable checkpoint use flushForTest/explicit flush.
+   }
+ }
