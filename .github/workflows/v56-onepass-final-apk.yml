@@ -116,7 +116,10 @@ jobs:
       - name: Verify and apply one-pass UI and paper-data patch
         shell: bash
         run: |
-          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/v56"
+          exec > >(tee "$RUNNER_TEMP/v56/onepass-step.log") 2>&1
+          trap 'rc=$?; echo "FAILED line ${LINENO}: ${BASH_COMMAND} (rc=${rc})"; exit ${rc}' ERR
+          set -euxo pipefail
           cd "$GITHUB_WORKSPACE"
           cat .github/v56_onepass_payload/p*.txt > "$RUNNER_TEMP/v56/onepass.patch.gz.b64"
           echo "${PAYLOAD_B64_SHA256}  $RUNNER_TEMP/v56/onepass.patch.gz.b64" | sha256sum --check --strict
@@ -242,6 +245,10 @@ jobs:
           path: |
             app/BotX_Pro_V56_ONEPASS_FINAL_ARM64_REVIEW.apk
             app/BotX_Pro_V56_ONEPASS_FINAL_ARM64_REVIEW.sha256
+            ${{ runner.temp }}/v56/onepass-step.log
+            ${{ runner.temp }}/v56/onepass.patch.gz.b64
+            ${{ runner.temp }}/v56/onepass.patch.gz
+            ${{ runner.temp }}/v56/onepass.patch
             ${{ runner.temp }}/v56/onepass-changed-files.txt
             ${{ runner.temp }}/v56/themes-before.sha256
             ${{ runner.temp }}/pub-get.log
