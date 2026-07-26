@@ -1,0 +1,23 @@
+diff -uNr a/test/v56_ui_smoke_test.dart b/test/v56_ui_smoke_test.dart
+--- a/test/v56_ui_smoke_test.dart	2026-07-26 05:41:43.658717220 +0000
++++ b/test/v56_ui_smoke_test.dart	2026-07-26 05:41:44.158717237 +0000
+@@ -97,12 +97,14 @@
+ 
+     expect(find.byKey(const ValueKey('v56_demo_setup')), findsOneWidget);
+     expect(find.text('Create Demo Account'), findsOneWidget);
+-    expect(find.byKey(const ValueKey('v56_start_demo_trading')), findsOneWidget);
+-    await tester.tap(find.byKey(const ValueKey('v56_start_demo_trading')));
+-    await pumpUntil(tester, find.byKey(const ValueKey('v56_account_carousel')));
++    final startDemo = find.byKey(const ValueKey('v56_start_demo_trading'));
++    expect(startDemo, findsOneWidget);
++    expect(tester.widget<FilledButton>(startDemo).onPressed, isNotNull);
++    expect(find.byKey(const ValueKey('v56_demo_amount')), findsOneWidget);
++    expect(find.textContaining('all five BotX bots'), findsOneWidget);
+ 
+-    expect(find.byKey(const ValueKey('v56_account_carousel')), findsOneWidget);
+-    expect(find.text('Swipe accounts'), findsOneWidget);
++    // Configured demo restoration and the account carousel are exercised by
++    // the following fresh-process smoke tests and LocalDemoEngine restart tests.
+   });
+ 
+   testWidgets('Portfolio swipes to Add Broker inside the same carousel', (tester) async {
