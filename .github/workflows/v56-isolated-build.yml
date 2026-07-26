@@ -14,6 +14,8 @@ jobs:
     timeout-minutes: 60
     env:
       SOURCE_FILE_ID: 1CpzzVCoTWhvo67LZ5fEty_UruvDzsy08
+      SOURCE_SHA256: 68ba3cc8a43347ed92c0a904da96bd23e94041f4eb92b07c1e4b65a860ba6b4d
+      PATCH_SHA256: 4df6c7a3d9a612470da0c750e5c168975081fe13be562ea6af2e96bea4ec892b
       APP_VERSION: 56.0.0+5600
       APP_PACKAGE: pro.botx.app
     steps:
@@ -35,7 +37,7 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Download and verify V56 source bundle
+      - name: Download, verify and patch V56 source bundle
         shell: bash
         run: |
           set -euo pipefail
@@ -44,18 +46,24 @@ jobs:
             "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/v56_source.sha256" \
             --output "$RUNNER_TEMP/v56/expected.sha256"
           EXPECTED_SHA="$(tr -d '[:space:]' < "$RUNNER_TEMP/v56/expected.sha256")"
-          [[ "$EXPECTED_SHA" =~ ^[a-f0-9]{64}$ ]]
+          test "$EXPECTED_SHA" = "$SOURCE_SHA256"
           curl --fail --location --retry 5 --retry-delay 3 \
             "https://drive.usercontent.google.com/download?id=${SOURCE_FILE_ID}&export=download&confirm=t" \
             --output "$RUNNER_TEMP/v56/source.tar.gz"
-          echo "${EXPECTED_SHA}  $RUNNER_TEMP/v56/source.tar.gz" | sha256sum --check --strict
+          echo "${SOURCE_SHA256}  $RUNNER_TEMP/v56/source.tar.gz" | sha256sum --check --strict
           tar -xzf "$RUNNER_TEMP/v56/source.tar.gz" -C "$GITHUB_WORKSPACE/app"
+          curl --fail --location --retry 5 --retry-delay 3 \
+            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/v56_patches/v56-reconstruction-mobile-fix.patch" \
+            --output "$RUNNER_TEMP/v56/reconstruction.patch"
+          echo "${PATCH_SHA256}  $RUNNER_TEMP/v56/reconstruction.patch" | sha256sum --check --strict
           cd "$GITHUB_WORKSPACE/app"
+          patch --batch --forward -p1 < "$RUNNER_TEMP/v56/reconstruction.patch"
           grep -F "version: ${APP_VERSION}" pubspec.yaml
           grep -F 'class V56NativeShell' lib/app/v56_native_shell.dart
           grep -F "namespace = \"${APP_PACKAGE}\"" android/app/build.gradle.kts
           ! grep -Eq 'webview_flutter|flutter_html' pubspec.yaml
           ! grep -RIl --exclude='index.html' 'class V55|V55NativeShell' lib assets/config assets/manifests
+          ! grep -RIn 'google.com/s2/favicons\|class _NetworkBrokerLogo' lib
 
       - name: Configure CI Gradle memory
         working-directory: app
@@ -115,7 +123,7 @@ jobs:
           set -o pipefail
           flutter analyze --fatal-infos 2>&1 | tee "$RUNNER_TEMP/flutter-analyze.log"
 
-      - name: Flutter unit and widget tests
+      - name: Flutter unit, widget, demo and logo tests
         working-directory: app
         shell: bash
         run: |
@@ -126,9 +134,10 @@ jobs:
             test/v56_ui_smoke_test.dart \
             test/local_demo_engine_test.dart \
             test/chart_datafeed_contract_test.dart \
+            test/market_identity_logo_test.dart \
             2>&1 | tee "$RUNNER_TEMP/flutter-tests.log"
 
-      - name: Capture V56 phone screenshots
+      - name: Capture seven V56 phone screenshots
         working-directory: app
         shell: bash
         run: |
@@ -163,8 +172,7 @@ jobs:
           APK_SIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
           "$APK_SIGNER" verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/apksigner.log"
           unzip -p "$APK" AndroidManifest.xml >/dev/null
-          strings "$APK" | grep -qv 'sk-[A-Za-z0-9]'
-          strings "$APK" | grep -qv 'gsk_[A-Za-z0-9]'
+          ! strings "$APK" | grep -Eq 'sk-[A-Za-z0-9]{16,}|gsk_[A-Za-z0-9]{16,}|AIza[0-9A-Za-z_-]{24,}'
           sha256sum "$APK" "$AAB" | tee "$GITHUB_WORKSPACE/app/BotX_Pro_V56_ANDROID_SHA256SUMS.txt"
           cp "$APK" "$GITHUB_WORKSPACE/app/BotX_Pro_V56_ARM64_Demo_Trading_RC.apk"
           cp "$AAB" "$GITHUB_WORKSPACE/app/BotX_Pro_V56_Demo_Trading_RC.aab"
