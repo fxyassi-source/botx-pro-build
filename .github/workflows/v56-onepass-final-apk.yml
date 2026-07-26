@@ -29,6 +29,11 @@ jobs:
       ONEPASS_PATCH_SHA256: 90487d9e341d3d2f6ed25a64fc64b96057b4bdeaf9658b4e299c40463139f690
 
     steps:
+      - name: Check out isolated build branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
       - name: Set up Java 21
         uses: actions/setup-java@v4
         with:
