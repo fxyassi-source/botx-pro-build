@@ -50,7 +50,7 @@ jobs:
             "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/v56_patches/v56-logo-test-optimization.patch" \
             --output "$RUNNER_TEMP/v56/logo-test-optimization.patch"
           echo "bd74e5546206dfd1c41ccf967c2ee5105a8ca9ebcfa53e3d88bbb4269b95b076  $RUNNER_TEMP/v56/demo-certification.patch" | sha256sum --check --strict
-          echo "f7873710effb66aff17d9722d72f47ea2f9771a2d8813249adf97aa412de9a03  $RUNNER_TEMP/v56/logo-test-optimization.patch" | sha256sum --check --strict
+          echo "5c7f085d4ddf349d12266e4e08d7cc71e963fdca22184d5ee55f0f23c847c9a7  $RUNNER_TEMP/v56/logo-test-optimization.patch" | sha256sum --check --strict
           cd "$GITHUB_WORKSPACE/app"
           patch --batch --forward -p1 < "$RUNNER_TEMP/v56/reconstruction.patch"
           patch --batch --forward -p1 < "$RUNNER_TEMP/v56/demo-certification.patch"
