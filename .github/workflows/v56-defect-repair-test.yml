@@ -77,6 +77,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          exec > >(tee "$RUNNER_TEMP/v56/patch-step.log") 2>&1
+          set -x
           PATCH_REF="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
           : > "$RUNNER_TEMP/v56/defect-repair.patch.gz.b64"
           for part in 00 01 02 03 04; do
@@ -94,8 +96,6 @@ jobs:
           cd "$GITHUB_WORKSPACE/app"
           patch --batch --forward -p1 < "$RUNNER_TEMP/v56/defect-repair.patch"
 
-          # The small V2 delta is generated against the exact formatter output
-          # from the first validation run, so normalize the same files first.
           dart format \
             lib/app/botx_app.dart \
             lib/app/local_demo_engine.dart \
@@ -179,6 +179,7 @@ jobs:
           name: botx-pro-v56-defect-repair-validation
           if-no-files-found: ignore
           path: |
+            ${{ runner.temp }}/v56/patch-step.log
             ${{ runner.temp }}/flutter-pub-get.log
             ${{ runner.temp }}/dart-format.log
             ${{ runner.temp }}/flutter-analyze.log
