@@ -20,7 +20,7 @@ jobs:
       LOGO_PATCH_SHA256: 55cb6efb6c0879e2cb15e235a86ae645a29123a81136f26cae302e2b97465bb8
       PERSISTENCE_PATCH_SHA256: 8bee1cab3afdc6fb215eccc5ee95b2836fdf597daee245323ea05b18b7058188
       DISPOSE_PATCH_SHA256: 31c075d5d1388b7681b6f96e7a5c391be7d408ad42f801584372c8a74cd9562c
-      UI_PATCH_SHA256: 5a2bbc4c048c9dc50781e6bcfb939d8e4b9f2dcfbb06cd57b2ed1e7dc01ae168
+      UI_PATCH_SHA256: 0d4bfce431ba97c556bfc1316ae1ea0cafbd86a8568e1d47c6c9a5e6793f68ff
       APP_VERSION: 56.0.0+5600
       APP_PACKAGE: pro.botx.app
 
@@ -63,7 +63,7 @@ jobs:
           fetch_patch logo .github/v56_patches/v56-logo-test-optimization-v7.patch "$LOGO_PATCH_SHA256"
           fetch_patch persistence .github/v56_patches/v56-brokerless-demo-persistence.patch "$PERSISTENCE_PATCH_SHA256"
           fetch_patch dispose .github/v56_patches/v56-demo-dispose-async-fix.patch "$DISPOSE_PATCH_SHA256"
-          fetch_patch ui .github/v56_patches/v56-ui-smoke-test-fix-v2.patch "$UI_PATCH_SHA256"
+          fetch_patch ui .github/v56_patches/v56-ui-smoke-test-fix-v3.patch "$UI_PATCH_SHA256"
           cd "$GITHUB_WORKSPACE/app"
           for name in reconstruction demo logo persistence dispose ui; do
             patch --batch --forward -p1 < "$RUNNER_TEMP/v56/${name}.patch"
