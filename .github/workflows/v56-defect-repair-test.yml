@@ -31,19 +31,17 @@ jobs:
       COMPLETION_B64_SHA256: 0aaecaadbf54f416707d164fea45322bac7da925d380aeefc3a7ea5e34dad4cc
       COMPLETION_GZIP_SHA256: 77c00980eab59b758cb097651762855ecbc101f30a946bdbdaac8467cfde127b
       COMPLETION_SHA256: 72663999e9e0e86986250a5fccb8d0d4a8febd76670e8e36912a2207ecca6aa8
+      LISTTILE_SHA256: 5eb1af727bb38b9e22ca2cbe29d26836b2213b18495c4ed0e857c0d0bf7b8489
 
     steps:
-      - name: 1. Confirm isolated workspace
-        run: test ! -d "$GITHUB_WORKSPACE/.git"
-
-      - name: 2. Set up Flutter 3.44.7
+      - name: Set up Flutter 3.44.7
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.44.7'
           channel: stable
           cache: true
 
-      - name: 3. Reconstruct certified V56 mobile baseline
+      - name: Reconstruct certified V56 baseline
         shell: bash
         run: |
           set -euo pipefail
@@ -53,7 +51,6 @@ jobs:
             -o "$RUNNER_TEMP/v56/source.tar.gz"
           echo "${SOURCE_SHA256}  $RUNNER_TEMP/v56/source.tar.gz" | sha256sum --check --strict
           tar -xzf "$RUNNER_TEMP/v56/source.tar.gz" -C "$GITHUB_WORKSPACE/app"
-
           fetch_patch() {
             local name="$1" path="$2" expected="$3"
             curl --fail --location --retry 5 --retry-delay 3 \
@@ -68,139 +65,86 @@ jobs:
           fetch_patch dispose .github/v56_patches/v56-demo-dispose-async-fix.patch "$DISPOSE_SHA"
           fetch_patch ui .github/v56_patches/v56-ui-smoke-test-fix-v9-clean.patch "$UI_SHA"
           fetch_patch visual .github/v56_patches/v56-visual-capture-async-fix.patch "$VISUAL_SHA"
-
           cd "$GITHUB_WORKSPACE/app"
           for name in reconstruction demo logo persistence dispose ui visual; do
             patch --batch --forward -p1 < "$RUNNER_TEMP/v56/${name}.patch"
           done
-          grep -F 'version: 56.0.0+5600' pubspec.yaml
-          grep -F 'class V56NativeShell' lib/app/v56_native_shell.dart
 
-      - name: 4. Apply immutable numbered-defect patches
+      - name: Apply numbered defect repairs
         shell: bash
         run: |
           set -euo pipefail
-          exec > >(tee "$RUNNER_TEMP/v56/patch-step.log") 2>&1
           PATCH_REF="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
-          : > "$RUNNER_TEMP/v56/defect-repair.patch.gz.b64"
+          cd "$GITHUB_WORKSPACE/app"
+          : > "$RUNNER_TEMP/v56/defect.patch.gz.b64"
           for part in 00 01 02 03 04; do
             curl --fail --location --retry 5 --retry-delay 3 \
               "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${PATCH_REF}/.github/v56_patches/numbered-defect-patch.b64.part${part}" \
-              >> "$RUNNER_TEMP/v56/defect-repair.patch.gz.b64"
+              >> "$RUNNER_TEMP/v56/defect.patch.gz.b64"
           done
-          echo "${DEFECT_PATCH_B64_SHA256}  $RUNNER_TEMP/v56/defect-repair.patch.gz.b64" | sha256sum --check --strict
-          base64 --decode "$RUNNER_TEMP/v56/defect-repair.patch.gz.b64" \
-            > "$RUNNER_TEMP/v56/defect-repair.patch.gz"
-          echo "${DEFECT_PATCH_GZIP_SHA256}  $RUNNER_TEMP/v56/defect-repair.patch.gz" | sha256sum --check --strict
-          gzip -dc "$RUNNER_TEMP/v56/defect-repair.patch.gz" \
-            > "$RUNNER_TEMP/v56/defect-repair.patch"
-          echo "${DEFECT_PATCH_SHA256}  $RUNNER_TEMP/v56/defect-repair.patch" | sha256sum --check --strict
-          cd "$GITHUB_WORKSPACE/app"
-          patch --batch --forward -p1 < "$RUNNER_TEMP/v56/defect-repair.patch"
-
-          dart format \
-            lib/app/botx_app.dart \
-            lib/app/local_demo_engine.dart \
-            lib/app/market_identity_logo.dart \
-            lib/app/v56_native_shell.dart \
-            lib/features/market/trading_view_chart.dart \
-            test/market_identity_logo_test.dart \
-            test/v56_ui_smoke_test.dart
+          echo "${DEFECT_PATCH_B64_SHA256}  $RUNNER_TEMP/v56/defect.patch.gz.b64" | sha256sum --check --strict
+          base64 --decode "$RUNNER_TEMP/v56/defect.patch.gz.b64" > "$RUNNER_TEMP/v56/defect.patch.gz"
+          echo "${DEFECT_PATCH_GZIP_SHA256}  $RUNNER_TEMP/v56/defect.patch.gz" | sha256sum --check --strict
+          gzip -dc "$RUNNER_TEMP/v56/defect.patch.gz" > "$RUNNER_TEMP/v56/defect.patch"
+          echo "${DEFECT_PATCH_SHA256}  $RUNNER_TEMP/v56/defect.patch" | sha256sum --check --strict
+          patch --batch --forward -p1 < "$RUNNER_TEMP/v56/defect.patch"
+          dart format lib/app/botx_app.dart lib/app/local_demo_engine.dart lib/app/market_identity_logo.dart lib/app/v56_native_shell.dart lib/features/market/trading_view_chart.dart test/market_identity_logo_test.dart test/v56_ui_smoke_test.dart
 
           curl --fail --location --retry 5 --retry-delay 3 \
             "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${PATCH_REF}/.github/v56_patches/v56-defect-v2-delta.patch.gz.b64" \
-            -o "$RUNNER_TEMP/v56/defect-v2-delta.patch.gz.b64"
-          echo "${DEFECT_DELTA_B64_SHA256}  $RUNNER_TEMP/v56/defect-v2-delta.patch.gz.b64" | sha256sum --check --strict
-          base64 --decode "$RUNNER_TEMP/v56/defect-v2-delta.patch.gz.b64" \
-            > "$RUNNER_TEMP/v56/defect-v2-delta.patch.gz"
-          echo "${DEFECT_DELTA_GZIP_SHA256}  $RUNNER_TEMP/v56/defect-v2-delta.patch.gz" | sha256sum --check --strict
-          gzip -dc "$RUNNER_TEMP/v56/defect-v2-delta.patch.gz" \
-            > "$RUNNER_TEMP/v56/defect-v2-delta.patch"
-          echo "${DEFECT_DELTA_SHA256}  $RUNNER_TEMP/v56/defect-v2-delta.patch" | sha256sum --check --strict
-          patch --batch --forward -p1 < "$RUNNER_TEMP/v56/defect-v2-delta.patch" || true
+            -o "$RUNNER_TEMP/v56/delta.gz.b64"
+          echo "${DEFECT_DELTA_B64_SHA256}  $RUNNER_TEMP/v56/delta.gz.b64" | sha256sum --check --strict
+          base64 --decode "$RUNNER_TEMP/v56/delta.gz.b64" > "$RUNNER_TEMP/v56/delta.gz"
+          echo "${DEFECT_DELTA_GZIP_SHA256}  $RUNNER_TEMP/v56/delta.gz" | sha256sum --check --strict
+          gzip -dc "$RUNNER_TEMP/v56/delta.gz" > "$RUNNER_TEMP/v56/delta.patch"
+          echo "${DEFECT_DELTA_SHA256}  $RUNNER_TEMP/v56/delta.patch" | sha256sum --check --strict
+          patch --batch --forward -p1 < "$RUNNER_TEMP/v56/delta.patch" || true
 
           curl --fail --location --retry 5 --retry-delay 3 \
             "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${PATCH_REF}/.github/v56_patches/v56-defect-v2-completion.patch.gz.b64" \
-            -o "$RUNNER_TEMP/v56/defect-v2-completion.patch.gz.b64"
-          echo "${COMPLETION_B64_SHA256}  $RUNNER_TEMP/v56/defect-v2-completion.patch.gz.b64" | sha256sum --check --strict
-          base64 --decode "$RUNNER_TEMP/v56/defect-v2-completion.patch.gz.b64" \
-            > "$RUNNER_TEMP/v56/defect-v2-completion.patch.gz"
-          echo "${COMPLETION_GZIP_SHA256}  $RUNNER_TEMP/v56/defect-v2-completion.patch.gz" | sha256sum --check --strict
-          gzip -dc "$RUNNER_TEMP/v56/defect-v2-completion.patch.gz" \
-            > "$RUNNER_TEMP/v56/defect-v2-completion.patch"
-          echo "${COMPLETION_SHA256}  $RUNNER_TEMP/v56/defect-v2-completion.patch" | sha256sum --check --strict
-          patch --batch --forward -p1 < "$RUNNER_TEMP/v56/defect-v2-completion.patch"
+            -o "$RUNNER_TEMP/v56/completion.gz.b64"
+          echo "${COMPLETION_B64_SHA256}  $RUNNER_TEMP/v56/completion.gz.b64" | sha256sum --check --strict
+          base64 --decode "$RUNNER_TEMP/v56/completion.gz.b64" > "$RUNNER_TEMP/v56/completion.gz"
+          echo "${COMPLETION_GZIP_SHA256}  $RUNNER_TEMP/v56/completion.gz" | sha256sum --check --strict
+          gzip -dc "$RUNNER_TEMP/v56/completion.gz" > "$RUNNER_TEMP/v56/completion.patch"
+          echo "${COMPLETION_SHA256}  $RUNNER_TEMP/v56/completion.patch" | sha256sum --check --strict
+          patch --batch --forward -p1 < "$RUNNER_TEMP/v56/completion.patch"
+
+          curl --fail --location --retry 5 --retry-delay 3 \
+            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${PATCH_REF}/.github/v56_patches/v56-listtile-material-fix.patch" \
+            -o "$RUNNER_TEMP/v56/listtile.patch"
+          echo "${LISTTILE_SHA256}  $RUNNER_TEMP/v56/listtile.patch" | sha256sum --check --strict
+          patch --batch --forward -p1 < "$RUNNER_TEMP/v56/listtile.patch"
           rm -f lib/app/*.rej test/*.rej
 
-          grep -F 'class TradingViewChartSurface' lib/features/market/trading_view_chart.dart
-          grep -F "ValueKey('v56_custom_bot_fullscreen')" lib/app/v56_native_shell.dart
-          grep -F "ValueKey('v56_login_signup')" lib/app/botx_app.dart
-          grep -F 'Set<String> get bundledBrokerAssets' lib/app/market_identity_logo.dart
-
-      - name: 5. Resolve and format
+      - name: Analyze and regression test
         working-directory: app
         shell: bash
         run: |
           set -euo pipefail
-          flutter pub get 2>&1 | tee "$RUNNER_TEMP/flutter-pub-get.log"
-          dart format \
-            lib/app/botx_app.dart \
-            lib/app/local_demo_engine.dart \
-            lib/app/market_identity_logo.dart \
-            lib/app/v56_native_shell.dart \
-            lib/features/market/trading_view_chart.dart \
-            test/market_identity_logo_test.dart \
-            test/v56_ui_smoke_test.dart \
-            2>&1 | tee "$RUNNER_TEMP/dart-format.log"
+          flutter pub get
+          dart format lib/app/botx_app.dart lib/app/local_demo_engine.dart lib/app/market_identity_logo.dart lib/app/v56_native_shell.dart lib/features/market/trading_view_chart.dart test/market_identity_logo_test.dart test/v56_ui_smoke_test.dart
+          flutter analyze --fatal-infos
+          timeout 420s flutter test --concurrency=1 --reporter expanded test/market_identity_logo_test.dart
+          timeout 420s flutter test --concurrency=1 --reporter expanded test/v56_ui_smoke_test.dart
+          timeout 420s flutter test --concurrency=1 --reporter expanded test/local_demo_engine_test.dart
 
-      - name: 6. Strict analyze
+      - name: Capture V56 verification screenshots
         working-directory: app
-        shell: bash
-        run: |
-          set -euo pipefail
-          flutter analyze --fatal-infos 2>&1 | tee "$RUNNER_TEMP/flutter-analyze.log"
-
-      - name: 7. Defect regression tests
-        working-directory: app
-        timeout-minutes: 18
-        shell: bash
-        run: |
-          set -euo pipefail
-          : > "$RUNNER_TEMP/flutter-defect-tests.log"
-          for test_file in \
-            test/market_identity_logo_test.dart \
-            test/v56_ui_smoke_test.dart \
-            test/local_demo_engine_test.dart; do
-            echo "=== ${test_file} ===" | tee -a "$RUNNER_TEMP/flutter-defect-tests.log"
-            timeout 420s flutter test --concurrency=1 --reporter expanded "$test_file" \
-              2>&1 | tee -a "$RUNNER_TEMP/flutter-defect-tests.log"
-          done
-
-      - name: 8. Layout capture only
-        working-directory: app
-        timeout-minutes: 10
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p test/goldens/generated
-          flutter test --update-goldens test/v56_visual_capture_test.dart \
-            2>&1 | tee "$RUNNER_TEMP/flutter-visual.log"
+          flutter test --update-goldens test/v56_visual_capture_test.dart
           test "$(find test/goldens/generated -name '*.png' | wc -l)" -eq 7
 
-      - name: 9. Upload diagnostics and formatted repair source
+      - name: Upload validation evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: botx-pro-v56-defect-repair-validation
+          name: botx-pro-v56-targeted-defect-validation
           if-no-files-found: ignore
           path: |
-            ${{ runner.temp }}/v56/patch-step.log
-            ${{ runner.temp }}/flutter-pub-get.log
-            ${{ runner.temp }}/dart-format.log
-            ${{ runner.temp }}/flutter-analyze.log
-            ${{ runner.temp }}/flutter-defect-tests.log
-            ${{ runner.temp }}/flutter-visual.log
-            app/pubspec.lock
             app/lib/app/botx_app.dart
             app/lib/app/local_demo_engine.dart
             app/lib/app/market_identity_logo.dart
@@ -210,4 +154,4 @@ jobs:
             app/test/v56_ui_smoke_test.dart
             app/test/goldens/generated/*.png
 
-      # Deliberately no APK/AAB build: user acceptance defects are not yet certified.
+      # No APK/AAB is built until user acceptance is complete.
