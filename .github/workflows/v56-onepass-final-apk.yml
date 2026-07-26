@@ -157,9 +157,9 @@ jobs:
           grep -F 'Build and test trading' lib/app/v56_native_shell.dart
           grep -F 'class _XmMarketDetailScreen' lib/app/v56_native_shell.dart
           grep -F 'class _MarketSymbolTile' lib/app/v56_native_shell.dart
-          grep -F 'hide_top_toolbar: true' lib/features/market/trading_view_chart.dart
-          grep -F 'hide_side_toolbar: true' lib/features/market/trading_view_chart.dart
-          grep -F 'hide_legend: true' lib/features/market/trading_view_chart.dart
+          grep -F "'hide_top_toolbar': true" lib/features/market/trading_view_chart.dart
+          grep -F "'hide_side_toolbar': true" lib/features/market/trading_view_chart.dart
+          grep -F "'hide_legend': true" lib/features/market/trading_view_chart.dart
           grep -F 'api.gold-api.com' lib/app/local_demo_engine.dart
           grep -F 'data-api.binance.vision' lib/app/local_demo_engine.dart
           grep -F 'query1.finance.yahoo.com' lib/app/local_demo_engine.dart
