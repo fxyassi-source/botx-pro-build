@@ -1,8 +1,6 @@
 name: BotX Pro V56 Defect Repair Validation
 
 on:
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
