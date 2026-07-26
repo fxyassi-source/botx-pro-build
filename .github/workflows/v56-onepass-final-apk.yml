@@ -210,6 +210,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          patch --batch --forward -p1 < "$GITHUB_WORKSPACE/.github/v56_targeted/onepass-analyze-fix.patch"
           flutter pub get 2>&1 | tee "$RUNNER_TEMP/pub-get.log"
           dart format lib/app/botx_app.dart lib/app/local_demo_engine.dart \
             lib/app/v56_native_shell.dart lib/features/market/trading_view_chart.dart \
