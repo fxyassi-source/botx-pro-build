@@ -1,0 +1,76 @@
+--- a/lib/features/market/trading_view_chart.dart
++++ b/lib/features/market/trading_view_chart.dart
+@@ -52,35 +52,44 @@
+ 
+   void _load() {
+     if (!TradingViewChartSurface.isSupportedPlatform) return;
+-    final controller = WebViewController()
+-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+-      ..setBackgroundColor(widget.dark ? const Color(0xFF07130F) : Colors.white)
+-      ..setNavigationDelegate(
+-        NavigationDelegate(
+-          onNavigationRequest: (request) {
+-            final uri = Uri.tryParse(request.url);
+-            if (uri == null) return NavigationDecision.prevent;
+-            if (uri.scheme == 'about' || uri.scheme == 'data') {
+-              return NavigationDecision.navigate;
+-            }
+-            final host = uri.host.toLowerCase();
+-            final allowed = host == 'tradingview.com' ||
+-                host.endsWith('.tradingview.com') ||
+-                host == 's3.tradingview.com';
+-            return allowed
+-                ? NavigationDecision.navigate
+-                : NavigationDecision.prevent;
+-          },
+-        ),
+-      )
+-      ..loadHtmlString(
+-        _widgetHtml(
+-          symbol: _tradingViewSymbol(widget.symbol),
+-          dark: widget.dark,
+-        ),
+-        baseUrl: 'https://www.tradingview.com',
+-      );
+-    _controller = controller;
++    try {
++      final controller = WebViewController()
++        ..setJavaScriptMode(JavaScriptMode.unrestricted)
++        ..setBackgroundColor(
++          widget.dark ? const Color(0xFF07130F) : Colors.white,
++        )
++        ..setNavigationDelegate(
++          NavigationDelegate(
++            onNavigationRequest: (request) {
++              final uri = Uri.tryParse(request.url);
++              if (uri == null) return NavigationDecision.prevent;
++              if (uri.scheme == 'about' || uri.scheme == 'data') {
++                return NavigationDecision.navigate;
++              }
++              final host = uri.host.toLowerCase();
++              final allowed = host == 'tradingview.com' ||
++                  host.endsWith('.tradingview.com') ||
++                  host == 's3.tradingview.com';
++              return allowed
++                  ? NavigationDecision.navigate
++                  : NavigationDecision.prevent;
++            },
++          ),
++        )
++        ..loadHtmlString(
++          _widgetHtml(
++            symbol: _tradingViewSymbol(widget.symbol),
++            dark: widget.dark,
++          ),
++          baseUrl: 'https://www.tradingview.com',
++        );
++      _controller = controller;
++    } on Object {
++      // Widget tests and unsupported platform hosts do not register a native
++      // WebView implementation. Keep the trusted native chart fallback rather
++      // than failing app startup; Android/iOS devices still use TradingView.
++      _controller = null;
++    }
+   }
+ 
+   @override
