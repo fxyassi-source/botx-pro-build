@@ -25,6 +25,9 @@ jobs:
       DEFECT_PATCH_B64_SHA256: ffba5a86353fae7736b4a3758b142a97ea9975117a8f3510d59f884293c20584
       DEFECT_PATCH_GZIP_SHA256: 170f20199855431f681c99fc2295946bd90b15d22e8f9ff0101aba773ad94d59
       DEFECT_PATCH_SHA256: 1d08d5f196b5e88582dd8c1afe41c2d1ae7556dd1c8ef0c6bc2c7116ba368e06
+      DEFECT_DELTA_B64_SHA256: c49b1ff09fd2b040bac90e4cfd26385e690ee364aae34445b0f741cf1e0c86aa
+      DEFECT_DELTA_GZIP_SHA256: a3af3d7a3c1cb13f1f770711b8a8a4031a05df4df2687ae36ba700668e3c933a
+      DEFECT_DELTA_SHA256: 3f3fa01ca849a84b2c9781fc00df5795a2a9cdbd78e6e84807db03e50547aa00
 
     steps:
       - name: 1. Confirm isolated workspace
@@ -70,7 +73,7 @@ jobs:
           grep -F 'version: 56.0.0+5600' pubspec.yaml
           grep -F 'class V56NativeShell' lib/app/v56_native_shell.dart
 
-      - name: 4. Apply immutable numbered-defect patch
+      - name: 4. Apply immutable numbered-defect patches
         shell: bash
         run: |
           set -euo pipefail
@@ -90,9 +93,34 @@ jobs:
           echo "${DEFECT_PATCH_SHA256}  $RUNNER_TEMP/v56/defect-repair.patch" | sha256sum --check --strict
           cd "$GITHUB_WORKSPACE/app"
           patch --batch --forward -p1 < "$RUNNER_TEMP/v56/defect-repair.patch"
+
+          # The small V2 delta is generated against the exact formatter output
+          # from the first validation run, so normalize the same files first.
+          dart format \
+            lib/app/botx_app.dart \
+            lib/app/local_demo_engine.dart \
+            lib/app/market_identity_logo.dart \
+            lib/app/v56_native_shell.dart \
+            lib/features/market/trading_view_chart.dart \
+            test/market_identity_logo_test.dart \
+            test/v56_ui_smoke_test.dart
+
+          curl --fail --location --retry 5 --retry-delay 3 \
+            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${PATCH_REF}/.github/v56_patches/v56-defect-v2-delta.patch.gz.b64" \
+            -o "$RUNNER_TEMP/v56/defect-v2-delta.patch.gz.b64"
+          echo "${DEFECT_DELTA_B64_SHA256}  $RUNNER_TEMP/v56/defect-v2-delta.patch.gz.b64" | sha256sum --check --strict
+          base64 --decode "$RUNNER_TEMP/v56/defect-v2-delta.patch.gz.b64" \
+            > "$RUNNER_TEMP/v56/defect-v2-delta.patch.gz"
+          echo "${DEFECT_DELTA_GZIP_SHA256}  $RUNNER_TEMP/v56/defect-v2-delta.patch.gz" | sha256sum --check --strict
+          gzip -dc "$RUNNER_TEMP/v56/defect-v2-delta.patch.gz" \
+            > "$RUNNER_TEMP/v56/defect-v2-delta.patch"
+          echo "${DEFECT_DELTA_SHA256}  $RUNNER_TEMP/v56/defect-v2-delta.patch" | sha256sum --check --strict
+          patch --batch --forward -p1 < "$RUNNER_TEMP/v56/defect-v2-delta.patch"
+
           grep -F 'class TradingViewChartSurface' lib/features/market/trading_view_chart.dart
           grep -F "ValueKey('v56_custom_bot_fullscreen')" lib/app/v56_native_shell.dart
           grep -F "ValueKey('v56_login_signup')" lib/app/botx_app.dart
+          grep -F 'Set<String> get bundledBrokerAssets' lib/app/market_identity_logo.dart
 
       - name: 5. Resolve and format
         working-directory: app
@@ -112,7 +140,10 @@ jobs:
 
       - name: 6. Strict analyze
         working-directory: app
-        run: flutter analyze --fatal-infos 2>&1 | tee "$RUNNER_TEMP/flutter-analyze.log"
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter analyze --fatal-infos 2>&1 | tee "$RUNNER_TEMP/flutter-analyze.log"
 
       - name: 7. Defect regression tests
         working-directory: app
@@ -133,7 +164,9 @@ jobs:
       - name: 8. Layout capture only
         working-directory: app
         timeout-minutes: 10
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p test/goldens/generated
           flutter test --update-goldens test/v56_visual_capture_test.dart \
             2>&1 | tee "$RUNNER_TEMP/flutter-visual.log"
