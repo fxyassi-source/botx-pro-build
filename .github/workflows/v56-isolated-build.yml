@@ -17,7 +17,8 @@ jobs:
       SOURCE_SHA256: 68ba3cc8a43347ed92c0a904da96bd23e94041f4eb92b07c1e4b65a860ba6b4d
       PATCH_SHA256: b1689b8159ac0f555fa6658f857e5b9d9b473bc840a6a4566ff2b8421f88b70f
       DEMO_PATCH_SHA256: bd74e5546206dfd1c41ccf967c2ee5105a8ca9ebcfa53e3d88bbb4269b95b076
-      LOGO_TEST_PATCH_SHA256: 758b2f0465b5a3e1b9bb366324983c48f2a54bbbf3cf2efa85c88f327fb42937
+      LOGO_TEST_PATCH_SHA256: 55cb6efb6c0879e2cb15e235a86ae645a29123a81136f26cae302e2b97465bb8
+      PERSISTENCE_PATCH_SHA256: 8bee1cab3afdc6fb215eccc5ee95b2836fdf597daee245323ea05b18b7058188
       APP_VERSION: 56.0.0+5600
       APP_PACKAGE: pro.botx.app
     steps:
@@ -61,15 +62,20 @@ jobs:
             "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/v56_patches/v56-demo-certification-fix.patch" \
             --output "$RUNNER_TEMP/v56/demo-certification.patch"
           curl --fail --location --retry 5 --retry-delay 3 \
-            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/v56_patches/v56-logo-test-optimization.patch" \
+            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/v56_patches/v56-logo-test-optimization-v7.patch" \
             --output "$RUNNER_TEMP/v56/logo-test-optimization.patch"
+          curl --fail --location --retry 5 --retry-delay 3 \
+            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/v56_patches/v56-brokerless-demo-persistence.patch" \
+            --output "$RUNNER_TEMP/v56/demo-persistence.patch"
           echo "${PATCH_SHA256}  $RUNNER_TEMP/v56/reconstruction.patch" | sha256sum --check --strict
           echo "${DEMO_PATCH_SHA256}  $RUNNER_TEMP/v56/demo-certification.patch" | sha256sum --check --strict
           echo "${LOGO_TEST_PATCH_SHA256}  $RUNNER_TEMP/v56/logo-test-optimization.patch" | sha256sum --check --strict
+          echo "${PERSISTENCE_PATCH_SHA256}  $RUNNER_TEMP/v56/demo-persistence.patch" | sha256sum --check --strict
           cd "$GITHUB_WORKSPACE/app"
           patch --batch --forward -p1 < "$RUNNER_TEMP/v56/reconstruction.patch"
           patch --batch --forward -p1 < "$RUNNER_TEMP/v56/demo-certification.patch"
           patch --batch --forward -p1 < "$RUNNER_TEMP/v56/logo-test-optimization.patch"
+          patch --batch --forward -p1 < "$RUNNER_TEMP/v56/demo-persistence.patch"
           grep -F "version: ${APP_VERSION}" pubspec.yaml
           grep -F 'class V56NativeShell' lib/app/v56_native_shell.dart
           grep -F "namespace = \"${APP_PACKAGE}\"" android/app/build.gradle.kts
