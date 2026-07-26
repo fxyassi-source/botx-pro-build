@@ -1,0 +1,252 @@
+name: BotX Pro V56 Single APK Build
+
+on:
+  push:
+    branches:
+      - v56-targeted-apk-build-20260726
+    paths:
+      - .github/v56_single_apk_trigger.txt
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build-v56-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      SOURCE_FILE_ID: 1CpzzVCoTWhvo67LZ5fEty_UruvDzsy08
+      SOURCE_SHA256: 68ba3cc8a43347ed92c0a904da96bd23e94041f4eb92b07c1e4b65a860ba6b4d
+      RECONSTRUCTION_SHA: b1689b8159ac0f555fa6658f857e5b9d9b473bc840a6a4566ff2b8421f88b70f
+      DEMO_SHA: bd74e5546206dfd1c41ccf967c2ee5105a8ca9ebcfa53e3d88bbb4269b95b076
+      LOGO_SHA: 55cb6efb6c0879e2cb15e235a86ae645a29123a81136f26cae302e2b97465bb8
+      PERSISTENCE_SHA: 8bee1cab3afdc6fb215eccc5ee95b2836fdf597daee245323ea05b18b7058188
+      DISPOSE_SHA: 31c075d5d1388b7681b6f96e7a5c391be7d408ad42f801584372c8a74cd9562c
+      UI_SHA: 01bcfb500fa179225ea3c65c0cf5169f1009761707702c5a2a9b4d5ebfaff368
+      VISUAL_SHA: 7b67d331e6c0e31d6a49feb5a65619dbad142f4c39e66a6f0dccf37fb8823bba
+      REPAIRED_SOURCE_ARTIFACT_ID: 8630548485
+
+    steps:
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up exact Flutter 3.44.7
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.7'
+          channel: stable
+          cache: true
+
+      - name: Reconstruct certified V56 baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/v56" "$GITHUB_WORKSPACE/app"
+          curl --fail --location --retry 5 --retry-delay 3 \
+            "https://drive.usercontent.google.com/download?id=${SOURCE_FILE_ID}&export=download&confirm=t" \
+            -o "$RUNNER_TEMP/v56/source.tar.gz"
+          echo "${SOURCE_SHA256}  $RUNNER_TEMP/v56/source.tar.gz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/v56/source.tar.gz" -C "$GITHUB_WORKSPACE/app"
+
+          fetch_patch() {
+            local name="$1" path="$2" expected="$3"
+            curl --fail --location --retry 5 --retry-delay 3 \
+              "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/d39318ee5540632b6fbd81fb413b2455e845e6f7/${path}" \
+              -o "$RUNNER_TEMP/v56/${name}.patch"
+            echo "${expected}  $RUNNER_TEMP/v56/${name}.patch" | sha256sum --check --strict
+          }
+          fetch_patch reconstruction .github/v56_patches/v56-reconstruction-mobile-fix.patch "$RECONSTRUCTION_SHA"
+          fetch_patch demo .github/v56_patches/v56-demo-certification-fix.patch "$DEMO_SHA"
+          fetch_patch logo .github/v56_patches/v56-logo-test-optimization-v7.patch "$LOGO_SHA"
+          fetch_patch persistence .github/v56_patches/v56-brokerless-demo-persistence.patch "$PERSISTENCE_SHA"
+          fetch_patch dispose .github/v56_patches/v56-demo-dispose-async-fix.patch "$DISPOSE_SHA"
+          fetch_patch ui .github/v56_patches/v56-ui-smoke-test-fix-v9-clean.patch "$UI_SHA"
+          fetch_patch visual .github/v56_patches/v56-visual-capture-async-fix.patch "$VISUAL_SHA"
+
+          cd "$GITHUB_WORKSPACE/app"
+          for name in reconstruction demo logo persistence dispose ui visual; do
+            patch --batch --forward -p1 < "$RUNNER_TEMP/v56/${name}.patch"
+          done
+          grep -F 'version: 56.0.0+5600' pubspec.yaml
+
+      - name: Restore targeted repaired mobile files
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 5 --retry-delay 3 \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${REPAIRED_SOURCE_ARTIFACT_ID}/zip" \
+            -o "$RUNNER_TEMP/v56/repaired-source.zip"
+          mkdir -p "$RUNNER_TEMP/v56/repaired-source"
+          unzip -q "$RUNNER_TEMP/v56/repaired-source.zip" -d "$RUNNER_TEMP/v56/repaired-source"
+          SRC_ROOT="$(python3 - <<'PY'
+          from pathlib import Path
+          root = Path(r'''${{ runner.temp }}/v56/repaired-source''')
+          matches = list(root.rglob('app/lib/app/botx_app.dart'))
+          if len(matches) != 1:
+              raise SystemExit(f'expected one repaired source root, found {len(matches)}')
+          print(matches[0].parents[2])
+          PY
+          )"
+          cp "$SRC_ROOT/lib/app/botx_app.dart" "$GITHUB_WORKSPACE/app/lib/app/botx_app.dart"
+          cp "$SRC_ROOT/lib/app/local_demo_engine.dart" "$GITHUB_WORKSPACE/app/lib/app/local_demo_engine.dart"
+          cp "$SRC_ROOT/lib/app/market_identity_logo.dart" "$GITHUB_WORKSPACE/app/lib/app/market_identity_logo.dart"
+          cp "$SRC_ROOT/lib/app/v56_native_shell.dart" "$GITHUB_WORKSPACE/app/lib/app/v56_native_shell.dart"
+          cp "$SRC_ROOT/lib/features/market/trading_view_chart.dart" "$GITHUB_WORKSPACE/app/lib/features/market/trading_view_chart.dart"
+          cp "$SRC_ROOT/test/market_identity_logo_test.dart" "$GITHUB_WORKSPACE/app/test/market_identity_logo_test.dart"
+          cp "$SRC_ROOT/test/v56_ui_smoke_test.dart" "$GITHUB_WORKSPACE/app/test/v56_ui_smoke_test.dart"
+
+          REF="${GITHUB_REF_NAME}"
+          curl --fail --location --retry 5 --retry-delay 3 \
+            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${REF}/.github/v56_targeted/pubspec.yaml" \
+            -o "$GITHUB_WORKSPACE/app/pubspec.yaml"
+          curl --fail --location --retry 5 --retry-delay 3 \
+            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${REF}/.github/v56_targeted/listtile-material-fix.patch" \
+            -o "$RUNNER_TEMP/v56/listtile-material-fix.patch"
+          cd "$GITHUB_WORKSPACE/app"
+          patch --batch --forward -p1 < "$RUNNER_TEMP/v56/listtile-material-fix.patch"
+
+          python3 - <<'PY'
+          from pathlib import Path
+          replacements = {
+              Path('test/v56_ui_smoke_test.dart'): 2,
+              Path('test/v56_visual_capture_test.dart'): 1,
+          }
+          old = 'await tester.runAsync(() => appController.initialize());'
+          visual_old = 'await tester.runAsync(() => controller.initialize());'
+          for path, expected in replacements.items():
+              text = path.read_text()
+              needle = visual_old if 'visual' in path.name else old
+              found = text.count(needle)
+              if found != expected:
+                  raise SystemExit(f'{path}: expected {expected} runAsync calls, found {found}')
+              replacement = (
+                  'await controller.initialize().timeout(const Duration(seconds: 15));'
+                  if 'visual' in path.name
+                  else 'await appController.initialize().timeout(const Duration(seconds: 15));'
+              )
+              path.write_text(text.replace(needle, replacement))
+          PY
+
+          grep -F "ValueKey('v56_custom_bot_fullscreen')" lib/app/v56_native_shell.dart
+          grep -F "ValueKey('v56_login_signup')" lib/app/botx_app.dart
+          grep -F 'class TradingViewChartSurface' lib/features/market/trading_view_chart.dart
+
+      - name: Configure Android signing
+        working-directory: app
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('android/gradle.properties')
+          rows = path.read_text().splitlines() if path.exists() else []
+          replacements = {
+              'org.gradle.jvmargs=': 'org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1536m -Dfile.encoding=UTF-8',
+              'org.gradle.workers.max=': 'org.gradle.workers.max=1',
+              'kotlin.daemon.jvmargs=': 'kotlin.daemon.jvmargs=-Xmx1024m',
+          }
+          result = []
+          seen = set()
+          for row in rows:
+              prefix = next((p for p in replacements if row.startswith(p)), None)
+              if prefix:
+                  if prefix not in seen:
+                      result.append(replacements[prefix])
+                      seen.add(prefix)
+              else:
+                  result.append(row)
+          for prefix, value in replacements.items():
+              if prefix not in seen:
+                  result.append(value)
+          path.write_text('\n'.join(result) + '\n')
+          PY
+          keytool -genkeypair \
+            -keystore android/app/v56-targeted-test.jks \
+            -storepass botx-v56-test \
+            -keypass botx-v56-test \
+            -alias v56targeted \
+            -keyalg RSA -keysize 3072 -validity 3650 \
+            -dname "CN=BotX Pro V56 Targeted Test, OU=Testing, O=BotX AI, L=Faridabad, ST=Haryana, C=IN"
+          cat > android/key.properties <<'EOF'
+          storePassword=botx-v56-test
+          keyPassword=botx-v56-test
+          keyAlias=v56targeted
+          storeFile=v56-targeted-test.jks
+          EOF
+
+      - name: Analyze and run targeted tests
+        working-directory: app
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter pub get 2>&1 | tee "$RUNNER_TEMP/flutter-pub-get.log"
+          dart format \
+            lib/app/botx_app.dart \
+            lib/app/local_demo_engine.dart \
+            lib/app/market_identity_logo.dart \
+            lib/app/v56_native_shell.dart \
+            lib/features/market/trading_view_chart.dart \
+            test/market_identity_logo_test.dart \
+            test/v56_ui_smoke_test.dart \
+            test/v56_visual_capture_test.dart \
+            2>&1 | tee "$RUNNER_TEMP/dart-format.log"
+          timeout 360s flutter analyze --fatal-infos 2>&1 | tee "$RUNNER_TEMP/flutter-analyze.log"
+          timeout 180s flutter test --concurrency=1 --reporter expanded test/market_identity_logo_test.dart 2>&1 | tee "$RUNNER_TEMP/flutter-logo-tests.log"
+          timeout 300s flutter test --concurrency=1 --reporter expanded test/v56_ui_smoke_test.dart 2>&1 | tee "$RUNNER_TEMP/flutter-ui-tests.log"
+          timeout 180s flutter test --concurrency=1 --reporter expanded test/local_demo_engine_test.dart 2>&1 | tee "$RUNNER_TEMP/flutter-engine-tests.log"
+
+      - name: Capture verification screenshots
+        working-directory: app
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p test/goldens/generated
+          timeout 300s flutter test --update-goldens test/v56_visual_capture_test.dart 2>&1 | tee "$RUNNER_TEMP/flutter-visual.log"
+          test "$(find test/goldens/generated -name '*.png' | wc -l)" -eq 7
+
+      - name: Build signed ARM64 test APK
+        working-directory: app
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 1200s flutter build apk --release --target-platform android-arm64 \
+            --dart-define=BOTX_ENV=offline-demo \
+            --dart-define=ALLOW_LIVE_MODE=false \
+            2>&1 | tee "$RUNNER_TEMP/flutter-apk.log"
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          test -s "$APK"
+          APK_SIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          "$APK_SIGNER" verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/apksigner.log"
+          ! strings "$APK" | grep -Eq 'sk-[A-Za-z0-9]{16,}|gsk_[A-Za-z0-9]{16,}|AIza[0-9A-Za-z_-]{24,}'
+          cp "$APK" BotX_Pro_V56_Targeted_Repair_ARM64_TEST.apk
+          sha256sum BotX_Pro_V56_Targeted_Repair_ARM64_TEST.apk > BotX_Pro_V56_Targeted_Repair_SHA256.txt
+
+      - name: Upload APK and evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: botx-pro-v56-targeted-repair-apk-final
+          if-no-files-found: ignore
+          retention-days: 30
+          path: |
+            app/BotX_Pro_V56_Targeted_Repair_ARM64_TEST.apk
+            app/BotX_Pro_V56_Targeted_Repair_SHA256.txt
+            app/test/goldens/generated/*.png
+            ${{ runner.temp }}/flutter-pub-get.log
+            ${{ runner.temp }}/dart-format.log
+            ${{ runner.temp }}/flutter-analyze.log
+            ${{ runner.temp }}/flutter-logo-tests.log
+            ${{ runner.temp }}/flutter-ui-tests.log
+            ${{ runner.temp }}/flutter-engine-tests.log
+            ${{ runner.temp }}/flutter-visual.log
+            ${{ runner.temp }}/flutter-apk.log
+            ${{ runner.temp }}/apksigner.log
