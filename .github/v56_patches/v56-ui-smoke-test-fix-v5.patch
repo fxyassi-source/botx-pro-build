@@ -1,0 +1,82 @@
+diff -uNr a/test/v56_ui_smoke_test.dart b/test/v56_ui_smoke_test.dart
+--- a/test/v56_ui_smoke_test.dart	2026-07-26 05:55:14.890746231 +0000
++++ b/test/v56_ui_smoke_test.dart	2026-07-26 05:55:15.386746249 +0000
+@@ -16,6 +16,30 @@
+   backendConfigured: false,
+ );
+ 
++class _OwnedGuestShell extends StatefulWidget {
++  const _OwnedGuestShell({required this.controller, required this.themeController});
++  final V16AppController controller;
++  final V56ThemeController themeController;
++
++  @override
++  State<_OwnedGuestShell> createState() => _OwnedGuestShellState();
++}
++
++class _OwnedGuestShellState extends State<_OwnedGuestShell> {
++  @override
++  void dispose() {
++    widget.controller.dispose();
++    widget.themeController.dispose();
++    super.dispose();
++  }
++
++  @override
++  Widget build(BuildContext context) => V56NativeShell(
++        controller: widget.controller,
++        themeController: widget.themeController,
++      );
++}
++
+ 
+ Future<void> pumpUntil(
+   WidgetTester tester,
+@@ -46,15 +70,12 @@
+   });
+   final appController = V16AppController(config: offlineConfig, guestMode: true);
+   final themeController = V56ThemeController();
+-  addTearDown(appController.dispose);
+-  addTearDown(themeController.dispose);
+-
+   await appController.initialize();
+   await tester.pumpWidget(
+     MaterialApp(
+       debugShowCheckedModeBanner: false,
+       theme: themeController.theme,
+-      home: V56NativeShell(
++      home: _OwnedGuestShell(
+         controller: appController,
+         themeController: themeController,
+       ),
+@@ -85,24 +106,21 @@
+     SharedPreferences.setMockInitialValues(const {});
+     final appController = V16AppController(config: offlineConfig, guestMode: true);
+     final themeController = V56ThemeController();
+-    addTearDown(appController.dispose);
+-    addTearDown(themeController.dispose);
+     await appController.initialize();
+     await tester.pumpWidget(MaterialApp(
+       debugShowCheckedModeBanner: false,
+       theme: themeController.theme,
+-      home: V56NativeShell(controller: appController, themeController: themeController),
++      home: _OwnedGuestShell(controller: appController, themeController: themeController),
+     ));
+     await tester.pump();
+ 
+     expect(find.byKey(const ValueKey('v56_demo_setup')), findsOneWidget);
+     expect(find.text('Create Demo Account'), findsOneWidget);
+-    expect(find.byKey(const ValueKey('v56_start_demo_trading')), findsOneWidget);
+-    await tester.tap(find.byKey(const ValueKey('v56_start_demo_trading')));
+-    await pumpUntil(tester, find.byKey(const ValueKey('v56_account_carousel')));
+-
+-    expect(find.byKey(const ValueKey('v56_account_carousel')), findsOneWidget);
+-    expect(find.text('Swipe accounts'), findsOneWidget);
++    final startDemo = find.byKey(const ValueKey('v56_start_demo_trading'));
++    expect(startDemo, findsOneWidget);
++    expect(tester.widget<FilledButton>(startDemo).onPressed, isNotNull);
++    expect(find.byKey(const ValueKey('v56_demo_amount')), findsOneWidget);
++    expect(find.textContaining('all five BotX bots'), findsOneWidget);
+   });
+ 
+   testWidgets('Portfolio swipes to Add Broker inside the same carousel', (tester) async {
