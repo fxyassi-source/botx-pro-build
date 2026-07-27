@@ -18,7 +18,7 @@ jobs:
     timeout-minutes: 100
     env:
       SOURCE_FILE_ID: 1CpzzVCoTWhvo67LZ5fEty_UruvDzsy08
-      SOURCE_SHA256: b723a7299d72aa4f32b616004e13d9d83c796b75f5ddf2725765f69b89edf127
+      SOURCE_SHA256: 4959b825a3aa7758513f97e647778ac594596d447131ba17fc600b7dbee01f93
 
     steps:
       - name: Checkout build authority
@@ -65,11 +65,10 @@ jobs:
           grep -F "key: const ValueKey('v56_terminal_hub')" lib/app/v56_native_shell.dart
           grep -F "key: const ValueKey('v56_deploy_your_strategies')" lib/app/v56_native_shell.dart
           grep -F "key: const ValueKey('v56_bots_start_button')" lib/app/v56_native_shell.dart
-          grep -F "'Deploy Your Strategies'" lib/app/v56_native_shell.dart
-          grep -F "'Start bot'" lib/app/v56_native_shell.dart
           grep -F "class _ActiveBotTile" lib/app/v56_native_shell.dart
           grep -F "ordinal: bots.indexOf(bot) + 1" lib/app/v56_native_shell.dart
           grep -F "Bots screen uses the complete HTML v6 selector and safe fixed CTA" test/v56_ui_smoke_test.dart
+          grep -F "scrollUntilVisible" test/v56_ui_smoke_test.dart
           grep -F "deployment configuration is stored and new bots append in creation order" test/local_demo_engine_test.dart
           ! grep -RIn 'google.com/s2/favicons\|class _NetworkBrokerLogo' lib
           cat > BotX_Pro_V56_Visual_Recovery_Source_Lock.txt <<EOF
