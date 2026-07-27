@@ -60,7 +60,6 @@ jobs:
           grep -F 'version: 56.0.0+5600' pubspec.yaml
           grep -F 'namespace = "pro.botx.app"' android/app/build.gradle.kts
           grep -F 'class V56NativeShell' lib/app/v56_native_shell.dart
-
           grep -F "title: 'Sound & haptics'" lib/app/v56_native_shell.dart
           grep -F "title: 'App sounds'" lib/app/v56_native_shell.dart
           grep -F "title: 'Haptic feedback'" lib/app/v56_native_shell.dart
@@ -73,11 +72,9 @@ jobs:
           grep -F 'deployment configuration is stored and new bots append in creation order' test/local_demo_engine_test.dart
           grep -F 'Color(0xFF0B241D)' lib/core/theme/v56_theme.dart
           grep -F 'Color(0xFF46E6B0)' lib/core/theme/v56_theme.dart
-
           ! grep -F "title: 'Backtesting'" lib/app/v56_native_shell.dart
           ! grep -RIn 'webview_flutter\|flutter_html' pubspec.yaml
           ! grep -RIn 'google.com/s2/favicons\|class _NetworkBrokerLogo' lib
-
           cat > BotX_Pro_V56_Elite_Source_Lock.txt <<EOF
           Source file ID: ${FINAL_SOURCE_FILE_ID}
           Source SHA-256: ${FINAL_SOURCE_SHA256}
@@ -132,7 +129,10 @@ jobs:
 
       - name: 8. Strict Flutter analyze
         working-directory: app
-        run: flutter analyze --fatal-infos
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter analyze --fatal-infos 2>&1 | tee "$RUNNER_TEMP/flutter-analyze.log"
 
       - name: 9. Run UI, bot, market and chart regression tests
         working-directory: app
@@ -206,6 +206,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
           path: |
+            ${{ runner.temp }}/flutter-analyze.log
             ${{ runner.temp }}/flutter-regression.log
             ${{ runner.temp }}/flutter-visual.log
             ${{ runner.temp }}/flutter-apk.log
