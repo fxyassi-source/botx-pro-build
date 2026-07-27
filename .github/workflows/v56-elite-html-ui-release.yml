@@ -1,4 +1,4 @@
-name: BotX Pro V56 Elite HTML UI Release
+name: BotX Pro V56 Elite Exact Source Release
 
 on:
   pull_request:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: v56-elite-html-ui-${{ github.ref }}
+  group: v56-elite-exact-source-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -17,101 +17,78 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
-      SOURCE_FILE_ID: 1CpzzVCoTWhvo67LZ5fEty_UruvDzsy08
-      SOURCE_SHA256: 68ba3cc8a43347ed92c0a904da96bd23e94041f4eb92b07c1e4b65a860ba6b4d
-      PATCH_SOURCE_COMMIT: d39318ee5540632b6fbd81fb413b2455e845e6f7
-      RECONSTRUCTION_SHA: b1689b8159ac0f555fa6658f857e5b9d9b473bc840a6a4566ff2b8421f88b70f
-      DEMO_SHA: bd74e5546206dfd1c41ccf967c2ee5105a8ca9ebcfa53e3d88bbb4269b95b076
-      LOGO_SHA: 55cb6efb6c0879e2cb15e235a86ae645a29123a81136f26cae302e2b97465bb8
-      PERSISTENCE_SHA: 8bee1cab3afdc6fb215eccc5ee95b2836fdf597daee245323ea05b18b7058188
-      DISPOSE_SHA: 31c075d5d1388b7681b6f96e7a5c391be7d408ad42f801584372c8a74cd9562c
-      UI_SHA: 01bcfb500fa179225ea3c65c0cf5169f1009761707702c5a2a9b4d5ebfaff368
-      VISUAL_SHA: 7b67d331e6c0e31d6a49feb5a65619dbad142f4c39e66a6f0dccf37fb8823bba
-      ELITE_B64_SHA: 94c05324cf29e3b09f231bc92b2eebdb161498e394a730eddccf71a2979c7738
-      ELITE_GZIP_SHA: d3b0bbe31520f651c65c4505b60938a295fa65cc23848e640fb7a8fa4d31cd8e
-      ELITE_PATCH_SHA: 0c8c83ebfc3235e4c8c12631e86c2df45efd2e7a5015513eb6c31937055e0bc2
+      FINAL_SOURCE_FILE_ID: 1rnT6Bth8JkiVfkfLcPHmNTshqyEjns0s
+      FINAL_SOURCE_SHA256: d4f805b07b6cf8b683c788e7f0070865f7827de9e3745dbe41375ed3ccab3129
+      UI_AUTHORITY_SHA256: 210647bdc447a55072fe16b6c7d348c7a316a0e0099c07c965f448dbf24112bd
 
     steps:
-      - name: 1. Checkout build authority only
+      - name: 1. Checkout build authority
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      - name: 2. Verify isolated repository boundary
-        shell: bash
-        run: |
-          set -euo pipefail
-          test ! -e pubspec.yaml
-          test -d .github/v56_elite_source_chunks
-          test "$(find .github/v56_elite_source_chunks -maxdepth 1 -name 'part-*.b64' | wc -l)" -eq 8
-
-      - name: 3. Set up Java 21
+      - name: 2. Set up Java 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
 
-      - name: 4. Set up Flutter 3.44.7
+      - name: 3. Set up Flutter 3.44.7
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.44.7'
           channel: stable
           cache: true
 
-      - name: 5. Reconstruct locked V56 source and apply exact repair chain
+      - name: 4. Download exact latest V56 Elite source
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/v56" "$GITHUB_WORKSPACE/app"
-          curl --fail --location --retry 5 --retry-delay 3 \
-            "https://drive.usercontent.google.com/download?id=${SOURCE_FILE_ID}&export=download&confirm=t" \
-            -o "$RUNNER_TEMP/v56/source.tar.gz"
-          echo "${SOURCE_SHA256}  $RUNNER_TEMP/v56/source.tar.gz" | sha256sum --check --strict
-          tar -xzf "$RUNNER_TEMP/v56/source.tar.gz" -C "$GITHUB_WORKSPACE/app"
+          curl --fail --location --retry 6 --retry-delay 3 \
+            "https://drive.usercontent.google.com/download?id=${FINAL_SOURCE_FILE_ID}&export=download&confirm=t" \
+            -o "$RUNNER_TEMP/v56/final-source.tar.gz"
+          echo "${FINAL_SOURCE_SHA256}  $RUNNER_TEMP/v56/final-source.tar.gz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/v56/final-source.tar.gz" -C "$GITHUB_WORKSPACE/app"
 
-          fetch_patch() {
-            local name="$1" path="$2" expected="$3"
-            curl --fail --location --retry 5 --retry-delay 3 \
-              "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${PATCH_SOURCE_COMMIT}/${path}" \
-              -o "$RUNNER_TEMP/v56/${name}.patch"
-            echo "${expected}  $RUNNER_TEMP/v56/${name}.patch" | sha256sum --check --strict
-          }
-          fetch_patch reconstruction .github/v56_patches/v56-reconstruction-mobile-fix.patch "$RECONSTRUCTION_SHA"
-          fetch_patch demo .github/v56_patches/v56-demo-certification-fix.patch "$DEMO_SHA"
-          fetch_patch logo .github/v56_patches/v56-logo-test-optimization-v7.patch "$LOGO_SHA"
-          fetch_patch persistence .github/v56_patches/v56-brokerless-demo-persistence.patch "$PERSISTENCE_SHA"
-          fetch_patch dispose .github/v56_patches/v56-demo-dispose-async-fix.patch "$DISPOSE_SHA"
-          fetch_patch ui .github/v56_patches/v56-ui-smoke-test-fix-v9-clean.patch "$UI_SHA"
-          fetch_patch visual .github/v56_patches/v56-visual-capture-async-fix.patch "$VISUAL_SHA"
-
-          cd "$GITHUB_WORKSPACE/app"
-          for name in reconstruction demo logo persistence dispose ui visual; do
-            patch --batch --forward -p1 < "$RUNNER_TEMP/v56/${name}.patch"
-          done
-
-      - name: 6. Apply SHA-locked Elite HTML-aligned UI update
+      - name: 5. Reject every old-UI fallback
+        working-directory: app
         shell: bash
         run: |
           set -euo pipefail
-          cat .github/v56_elite_source_chunks/part-*.b64 > "$RUNNER_TEMP/v56/elite.patch.b64"
-          echo "${ELITE_B64_SHA}  $RUNNER_TEMP/v56/elite.patch.b64" | sha256sum --check --strict
-          base64 --decode "$RUNNER_TEMP/v56/elite.patch.b64" > "$RUNNER_TEMP/v56/elite.patch.gz"
-          echo "${ELITE_GZIP_SHA}  $RUNNER_TEMP/v56/elite.patch.gz" | sha256sum --check --strict
-          gunzip --stdout "$RUNNER_TEMP/v56/elite.patch.gz" > "$RUNNER_TEMP/v56/elite.patch"
-          echo "${ELITE_PATCH_SHA}  $RUNNER_TEMP/v56/elite.patch" | sha256sum --check --strict
-          cd "$GITHUB_WORKSPACE/app"
-          patch --batch --forward -p1 < "$RUNNER_TEMP/v56/elite.patch"
-
+          test -f pubspec.yaml
           grep -F 'version: 56.0.0+5600' pubspec.yaml
           grep -F 'namespace = "pro.botx.app"' android/app/build.gradle.kts
           grep -F 'class V56NativeShell' lib/app/v56_native_shell.dart
+
           grep -F "title: 'Sound & haptics'" lib/app/v56_native_shell.dart
+          grep -F "title: 'App sounds'" lib/app/v56_native_shell.dart
+          grep -F "title: 'Haptic feedback'" lib/app/v56_native_shell.dart
+          grep -F 'Tap a market pair to open its chart and AI analysis.' lib/app/v56_native_shell.dart
+          grep -F 'class _BotDeploymentConfigScreen' lib/app/v56_native_shell.dart
+          grep -F "labelText: 'Currency pair / market'" lib/app/v56_native_shell.dart
+          grep -F "labelText: 'Max positions'" lib/app/v56_native_shell.dart
+          grep -F "labelText: 'Timeframe'" lib/app/v56_native_shell.dart
+          grep -F "'Review & deploy bot'" lib/app/v56_native_shell.dart
           grep -F 'deployment configuration is stored and new bots append in creation order' test/local_demo_engine_test.dart
           grep -F 'Color(0xFF0B241D)' lib/core/theme/v56_theme.dart
           grep -F 'Color(0xFF46E6B0)' lib/core/theme/v56_theme.dart
-          ! grep -F "title: 'Backtesting'" lib/app/v56_native_shell.dart
 
-      - name: 7. Configure build memory and RC signing
+          ! grep -F "title: 'Backtesting'" lib/app/v56_native_shell.dart
+          ! grep -RIn 'webview_flutter\|flutter_html' pubspec.yaml
+          ! grep -RIn 'google.com/s2/favicons\|class _NetworkBrokerLogo' lib
+
+          cat > BotX_Pro_V56_Elite_Source_Lock.txt <<EOF
+          Source file ID: ${FINAL_SOURCE_FILE_ID}
+          Source SHA-256: ${FINAL_SOURCE_SHA256}
+          V56 Gold HTML authority SHA-256: ${UI_AUTHORITY_SHA256}
+          Version: 56.0.0+5600
+          Package: pro.botx.app
+          Live mode: disabled
+          Old UI fallback: prohibited by build gates
+          EOF
+
+      - name: 6. Configure memory and RC signing
         working-directory: app
         shell: bash
         run: |
@@ -138,28 +115,28 @@ jobs:
                   result.append(value)
           path.write_text('\n'.join(result) + '\n')
           PY
-          keytool -genkeypair -keystore android/app/v56-elite-rc-keystore.jks \
-            -storepass changeit-v56-elite-rc -keypass changeit-v56-elite-rc -alias v56eliterc \
+          keytool -genkeypair -keystore android/app/v56-elite-exact-rc.jks \
+            -storepass changeit-v56-elite-exact -keypass changeit-v56-elite-exact -alias v56eliteexact \
             -keyalg RSA -keysize 3072 -validity 3650 \
-            -dname "CN=BotX Pro V56 Elite Release Candidate, OU=Testing, O=BotX AI, L=Faridabad, ST=Haryana, C=IN"
+            -dname "CN=BotX Pro V56 Elite Exact RC, OU=Testing, O=BotX AI, L=Faridabad, ST=Haryana, C=IN"
           cat > android/key.properties <<'EOF'
-          storePassword=changeit-v56-elite-rc
-          keyPassword=changeit-v56-elite-rc
-          keyAlias=v56eliterc
-          storeFile=v56-elite-rc-keystore.jks
+          storePassword=changeit-v56-elite-exact
+          keyPassword=changeit-v56-elite-exact
+          keyAlias=v56eliteexact
+          storeFile=v56-elite-exact-rc.jks
           EOF
 
-      - name: 8. Resolve dependencies
+      - name: 7. Resolve dependencies
         working-directory: app
         run: flutter pub get
 
-      - name: 9. Strict Flutter analyze
+      - name: 8. Strict Flutter analyze
         working-directory: app
         run: flutter analyze --fatal-infos
 
-      - name: 10. Run V56 UI and deployment regression tests
+      - name: 9. Run UI, bot, market and chart regression tests
         working-directory: app
-        timeout-minutes: 20
+        timeout-minutes: 24
         shell: bash
         run: |
           set -euo pipefail
@@ -170,11 +147,11 @@ jobs:
             test/market_identity_logo_test.dart \
             test/chart_datafeed_contract_test.dart; do
             echo "=== ${test_file} ===" | tee -a "$RUNNER_TEMP/flutter-regression.log"
-            timeout 300s flutter test --concurrency=1 --reporter expanded "$test_file" \
+            timeout 360s flutter test --concurrency=1 --reporter expanded "$test_file" \
               2>&1 | tee -a "$RUNNER_TEMP/flutter-regression.log"
           done
 
-      - name: 11. Capture seven V56 verification screenshots
+      - name: 10. Capture seven V56 verification screenshots
         working-directory: app
         timeout-minutes: 15
         shell: bash
@@ -186,7 +163,7 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/flutter-visual.log"
           test "$(find test/goldens/generated -name '*.png' | wc -l)" -eq 7
 
-      - name: 12. Build signed ARM64 APK
+      - name: 11. Build signed ARM64 APK
         working-directory: app
         shell: bash
         run: |
@@ -195,7 +172,7 @@ jobs:
             --dart-define=ALLOW_LIVE_MODE=false \
             2>&1 | tee "$RUNNER_TEMP/flutter-apk.log"
 
-      - name: 13. Build Android App Bundle
+      - name: 12. Build Android App Bundle
         working-directory: app
         shell: bash
         run: |
@@ -203,7 +180,7 @@ jobs:
           flutter build appbundle --release --dart-define=ALLOW_LIVE_MODE=false \
             2>&1 | tee "$RUNNER_TEMP/flutter-aab.log"
 
-      - name: 14. Verify package signing secrets and hashes
+      - name: 13. Verify signing, secrets and hashes
         working-directory: app
         shell: bash
         run: |
@@ -215,25 +192,17 @@ jobs:
           APK_SIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
           "$APK_SIGNER" verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/apksigner.log"
           ! strings "$APK" | grep -Eq 'sk-[A-Za-z0-9]{16,}|gsk_[A-Za-z0-9]{16,}|AIza[0-9A-Za-z_-]{24,}'
-          cp "$APK" BotX_Pro_V56_Elite_HTML_UI_ARM64_RC.apk
-          cp "$AAB" BotX_Pro_V56_Elite_HTML_UI_RC.aab
-          sha256sum BotX_Pro_V56_Elite_HTML_UI_ARM64_RC.apk \
-            BotX_Pro_V56_Elite_HTML_UI_RC.aab | tee BotX_Pro_V56_Elite_HTML_UI_SHA256SUMS.txt
-          cat > BotX_Pro_V56_Elite_HTML_UI_BUILD_INFO.txt <<EOF
-          Version: 56.0.0+5600
-          Package: pro.botx.app
-          Flutter: 3.44.7 stable
-          Java: 21
-          Live mode: disabled
-          Elite patch SHA-256: ${ELITE_PATCH_SHA}
-          Git commit: ${GITHUB_SHA}
-          EOF
+          cp "$APK" BotX_Pro_V56_Elite_Exact_UI_ARM64_RC.apk
+          cp "$AAB" BotX_Pro_V56_Elite_Exact_UI_RC.aab
+          sha256sum BotX_Pro_V56_Elite_Exact_UI_ARM64_RC.apk \
+            BotX_Pro_V56_Elite_Exact_UI_RC.aab \
+            BotX_Pro_V56_Elite_Source_Lock.txt | tee BotX_Pro_V56_Elite_Exact_UI_SHA256SUMS.txt
 
-      - name: 15. Upload diagnostics
+      - name: 14. Upload diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: botx-pro-v56-elite-ui-diagnostics
+          name: botx-pro-v56-elite-exact-diagnostics
           if-no-files-found: ignore
           retention-days: 14
           path: |
@@ -243,22 +212,23 @@ jobs:
             ${{ runner.temp }}/flutter-aab.log
             ${{ runner.temp }}/apksigner.log
 
-      - name: 16. Upload screenshots
+      - name: 15. Upload screenshots
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: botx-pro-v56-elite-ui-screenshots
+          name: botx-pro-v56-elite-exact-screenshots
           retention-days: 14
           path: app/test/goldens/generated/*.png
 
-      - name: 17. Upload Android release
+      - name: 16. Upload exact Android release and source lock
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: botx-pro-v56-elite-ui-android
+          name: botx-pro-v56-elite-exact-android
           retention-days: 14
           path: |
-            app/BotX_Pro_V56_Elite_HTML_UI_ARM64_RC.apk
-            app/BotX_Pro_V56_Elite_HTML_UI_RC.aab
-            app/BotX_Pro_V56_Elite_HTML_UI_SHA256SUMS.txt
-            app/BotX_Pro_V56_Elite_HTML_UI_BUILD_INFO.txt
+            app/BotX_Pro_V56_Elite_Exact_UI_ARM64_RC.apk
+            app/BotX_Pro_V56_Elite_Exact_UI_RC.aab
+            app/BotX_Pro_V56_Elite_Exact_UI_SHA256SUMS.txt
+            app/BotX_Pro_V56_Elite_Source_Lock.txt
+            ${{ runner.temp }}/v56/final-source.tar.gz
