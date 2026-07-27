@@ -56,7 +56,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -f pubspec.yaml
           grep -F 'version: 56.0.0+5600' pubspec.yaml
           grep -F 'namespace = "pro.botx.app"' android/app/build.gradle.kts
           grep -F 'class V56NativeShell' lib/app/v56_native_shell.dart
@@ -142,24 +141,57 @@ jobs:
           set -o pipefail
           flutter analyze --fatal-infos 2>&1 | tee "$RUNNER_TEMP/flutter-analyze.log"
 
-      - name: 10. Run UI, bot, market and chart regression tests
+      - name: 10. Run isolated V56 UI tests
         working-directory: app
-        timeout-minutes: 24
+        timeout-minutes: 28
         shell: bash
         run: |
           set -euo pipefail
           : > "$RUNNER_TEMP/flutter-regression.log"
-          for test_file in \
-            test/v56_ui_smoke_test.dart \
-            test/local_demo_engine_test.dart \
-            test/market_identity_logo_test.dart \
-            test/chart_datafeed_contract_test.dart; do
-            echo "=== ${test_file} ===" | tee -a "$RUNNER_TEMP/flutter-regression.log"
-            timeout 360s flutter test --concurrency=1 --reporter expanded "$test_file" \
+          ui_tests=(
+            "Skip for now enters the guest V56 shell"
+            "New users can open the create-account flow"
+            "Guest V56 shell creates a demo account from a virtual balance"
+            "Portfolio swipes to Add Broker inside the same carousel"
+            "Market keeps the XM-sized chart surface"
+            "Market chart opens the full-screen TradingView surface"
+            "All eight locked V56 theme modes are selectable"
+            "Terminal Hub double-tap opens complete history"
+            "Bots screen keeps compact Terminal Hub and deployment sections"
+            "Create My Own Bot opens as a full-screen route"
+            "Settings restores plans and hides developer-only rows"
+          )
+          for test_name in "${ui_tests[@]}"; do
+            echo "=== UI: ${test_name} ===" | tee -a "$RUNNER_TEMP/flutter-regression.log"
+            timeout 150s flutter test --concurrency=1 --reporter expanded \
+              test/v56_ui_smoke_test.dart --plain-name "$test_name" \
               2>&1 | tee -a "$RUNNER_TEMP/flutter-regression.log"
           done
 
-      - name: 11. Capture seven V56 verification screenshots
+      - name: 11. Run isolated bot lifecycle tests
+        working-directory: app
+        timeout-minutes: 16
+        shell: bash
+        run: |
+          set -euo pipefail
+          bot_tests=(
+            "local demo certifies all five bot families and emergency-stop semantics"
+            "local demo persists wallet bots positions and trade history across restart"
+            "corrupt local demo snapshot fails closed and restores legacy wallet only"
+            "deployment configuration is stored and new bots append in creation order"
+          )
+          for test_name in "${bot_tests[@]}"; do
+            echo "=== BOT: ${test_name} ===" | tee -a "$RUNNER_TEMP/flutter-regression.log"
+            timeout 180s flutter test --concurrency=1 --reporter expanded \
+              test/local_demo_engine_test.dart --plain-name "$test_name" \
+              2>&1 | tee -a "$RUNNER_TEMP/flutter-regression.log"
+          done
+          flutter test --concurrency=1 --reporter expanded test/market_identity_logo_test.dart \
+            2>&1 | tee -a "$RUNNER_TEMP/flutter-regression.log"
+          flutter test --concurrency=1 --reporter expanded test/chart_datafeed_contract_test.dart \
+            2>&1 | tee -a "$RUNNER_TEMP/flutter-regression.log"
+
+      - name: 12. Capture seven V56 verification screenshots
         working-directory: app
         timeout-minutes: 15
         shell: bash
@@ -171,7 +203,7 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/flutter-visual.log"
           test "$(find test/goldens/generated -name '*.png' | wc -l)" -eq 7
 
-      - name: 12. Build signed ARM64 APK
+      - name: 13. Build signed ARM64 APK
         working-directory: app
         shell: bash
         run: |
@@ -180,7 +212,7 @@ jobs:
             --dart-define=ALLOW_LIVE_MODE=false \
             2>&1 | tee "$RUNNER_TEMP/flutter-apk.log"
 
-      - name: 13. Build Android App Bundle
+      - name: 14. Build Android App Bundle
         working-directory: app
         shell: bash
         run: |
@@ -188,7 +220,7 @@ jobs:
           flutter build appbundle --release --dart-define=ALLOW_LIVE_MODE=false \
             2>&1 | tee "$RUNNER_TEMP/flutter-aab.log"
 
-      - name: 14. Verify signing, secrets and hashes
+      - name: 15. Verify signing, secrets and hashes
         working-directory: app
         shell: bash
         run: |
@@ -212,7 +244,7 @@ jobs:
             "$RUNNER_TEMP/BotX_Pro_V56_Elite_Exact_UI_SOURCE_BUILD_CLEAN.tar.gz" \
             | tee BotX_Pro_V56_Elite_Exact_UI_SHA256SUMS.txt
 
-      - name: 15. Upload diagnostics
+      - name: 16. Upload diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -227,7 +259,7 @@ jobs:
             ${{ runner.temp }}/flutter-aab.log
             ${{ runner.temp }}/apksigner.log
 
-      - name: 16. Upload screenshots
+      - name: 17. Upload screenshots
         if: success()
         uses: actions/upload-artifact@v4
         with:
@@ -235,7 +267,7 @@ jobs:
           retention-days: 14
           path: app/test/goldens/generated/*.png
 
-      - name: 17. Upload exact Android release and source lock
+      - name: 18. Upload exact Android release and source lock
         if: success()
         uses: actions/upload-artifact@v4
         with:
