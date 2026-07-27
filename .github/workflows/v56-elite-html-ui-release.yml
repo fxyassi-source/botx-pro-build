@@ -85,7 +85,15 @@ jobs:
           Old UI fallback: prohibited by build gates
           EOF
 
-      - name: 6. Configure memory and RC signing
+      - name: 6. Apply exact analyzer cleanup
+        working-directory: app
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 "$GITHUB_WORKSPACE/.github/scripts/v56_elite_analyze_cleanup.py"
+          ! grep -RIn 'double _riskFraction\|String _brokerMark' lib/app
+
+      - name: 7. Configure memory and RC signing
         working-directory: app
         shell: bash
         run: |
@@ -123,18 +131,18 @@ jobs:
           storeFile=v56-elite-exact-rc.jks
           EOF
 
-      - name: 7. Resolve dependencies
+      - name: 8. Resolve dependencies
         working-directory: app
         run: flutter pub get
 
-      - name: 8. Strict Flutter analyze
+      - name: 9. Strict Flutter analyze
         working-directory: app
         shell: bash
         run: |
           set -o pipefail
           flutter analyze --fatal-infos 2>&1 | tee "$RUNNER_TEMP/flutter-analyze.log"
 
-      - name: 9. Run UI, bot, market and chart regression tests
+      - name: 10. Run UI, bot, market and chart regression tests
         working-directory: app
         timeout-minutes: 24
         shell: bash
@@ -151,7 +159,7 @@ jobs:
               2>&1 | tee -a "$RUNNER_TEMP/flutter-regression.log"
           done
 
-      - name: 10. Capture seven V56 verification screenshots
+      - name: 11. Capture seven V56 verification screenshots
         working-directory: app
         timeout-minutes: 15
         shell: bash
@@ -163,7 +171,7 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/flutter-visual.log"
           test "$(find test/goldens/generated -name '*.png' | wc -l)" -eq 7
 
-      - name: 11. Build signed ARM64 APK
+      - name: 12. Build signed ARM64 APK
         working-directory: app
         shell: bash
         run: |
@@ -172,7 +180,7 @@ jobs:
             --dart-define=ALLOW_LIVE_MODE=false \
             2>&1 | tee "$RUNNER_TEMP/flutter-apk.log"
 
-      - name: 12. Build Android App Bundle
+      - name: 13. Build Android App Bundle
         working-directory: app
         shell: bash
         run: |
@@ -180,7 +188,7 @@ jobs:
           flutter build appbundle --release --dart-define=ALLOW_LIVE_MODE=false \
             2>&1 | tee "$RUNNER_TEMP/flutter-aab.log"
 
-      - name: 13. Verify signing, secrets and hashes
+      - name: 14. Verify signing, secrets and hashes
         working-directory: app
         shell: bash
         run: |
@@ -194,11 +202,17 @@ jobs:
           ! strings "$APK" | grep -Eq 'sk-[A-Za-z0-9]{16,}|gsk_[A-Za-z0-9]{16,}|AIza[0-9A-Za-z_-]{24,}'
           cp "$APK" BotX_Pro_V56_Elite_Exact_UI_ARM64_RC.apk
           cp "$AAB" BotX_Pro_V56_Elite_Exact_UI_RC.aab
+          tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
+            --exclude='./build' --exclude='./.dart_tool' --exclude='./android/app/*.jks' \
+            --exclude='./android/key.properties' \
+            -czf "$RUNNER_TEMP/BotX_Pro_V56_Elite_Exact_UI_SOURCE_BUILD_CLEAN.tar.gz" .
           sha256sum BotX_Pro_V56_Elite_Exact_UI_ARM64_RC.apk \
             BotX_Pro_V56_Elite_Exact_UI_RC.aab \
-            BotX_Pro_V56_Elite_Source_Lock.txt | tee BotX_Pro_V56_Elite_Exact_UI_SHA256SUMS.txt
+            BotX_Pro_V56_Elite_Source_Lock.txt \
+            "$RUNNER_TEMP/BotX_Pro_V56_Elite_Exact_UI_SOURCE_BUILD_CLEAN.tar.gz" \
+            | tee BotX_Pro_V56_Elite_Exact_UI_SHA256SUMS.txt
 
-      - name: 14. Upload diagnostics
+      - name: 15. Upload diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -213,7 +227,7 @@ jobs:
             ${{ runner.temp }}/flutter-aab.log
             ${{ runner.temp }}/apksigner.log
 
-      - name: 15. Upload screenshots
+      - name: 16. Upload screenshots
         if: success()
         uses: actions/upload-artifact@v4
         with:
@@ -221,7 +235,7 @@ jobs:
           retention-days: 14
           path: app/test/goldens/generated/*.png
 
-      - name: 16. Upload exact Android release and source lock
+      - name: 17. Upload exact Android release and source lock
         if: success()
         uses: actions/upload-artifact@v4
         with:
@@ -233,3 +247,4 @@ jobs:
             app/BotX_Pro_V56_Elite_Exact_UI_SHA256SUMS.txt
             app/BotX_Pro_V56_Elite_Source_Lock.txt
             ${{ runner.temp }}/v56/final-source.tar.gz
+            ${{ runner.temp }}/BotX_Pro_V56_Elite_Exact_UI_SOURCE_BUILD_CLEAN.tar.gz
