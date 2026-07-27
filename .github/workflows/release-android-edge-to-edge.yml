@@ -6,6 +6,7 @@ on:
     paths:
       - 'release-trigger/v56-0-2-edge-to-edge.txt'
       - 'patches/BOTX_PRO_V56_0_2_EDGE_TO_EDGE.patch.gz.b64'
+      - 'patches/BOTX_PRO_V56_0_2_CI_TEST_ISOLATION.patch'
       - '.github/workflows/release-android-edge-to-edge.yml'
   workflow_dispatch:
 
@@ -27,6 +28,7 @@ jobs:
       SOURCE_SHA256: 4959b825a3aa7758513f97e647778ac594596d447131ba17fc600b7dbee01f93
       TARGET8_PATCH_SHA256: 659eef1211a2847af09a8e58c493f7de8a00b6534be6f1aac89fa5097b1209b8
       EDGE_PATCH_SHA256: 8bc323faadb1cee61685f024cd8ff4937c52aa845c41219a7b27cde71a5217e5
+      TEST_ISOLATION_SHA256: 741b5462504c7d69215305cdee2612411688bd4db0df02d53fb7a0af8760fb65
       SIGNING_TAG: botx-android-signing-v1
 
     steps:
@@ -68,6 +70,10 @@ jobs:
           base64 -d patches/BOTX_PRO_V56_0_2_EDGE_TO_EDGE.patch.gz.b64 | gzip -dc > edge-to-edge.patch
           echo "${EDGE_PATCH_SHA256}  edge-to-edge.patch" | sha256sum --check --strict
           patch -p1 -d app < edge-to-edge.patch
+
+          echo "${TEST_ISOLATION_SHA256}  patches/BOTX_PRO_V56_0_2_CI_TEST_ISOLATION.patch" \
+            | sha256sum --check --strict
+          patch -p1 -d app < patches/BOTX_PRO_V56_0_2_CI_TEST_ISOLATION.patch
 
           sha256sum --check --strict protected-lib.sha256
           grep -q '^version: 56.0.2+5602$' app/pubspec.yaml
