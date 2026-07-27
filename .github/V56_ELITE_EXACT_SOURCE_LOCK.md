@@ -2,8 +2,8 @@
 
 This branch must build only the latest Elite HTML-aligned native Flutter source.
 
-- Source Drive ID: `1rnT6Bth8JkiVfkfLcPHmNTshqyEjns0s`
-- Source SHA-256: `d4f805b07b6cf8b683c788e7f0070865f7827de9e3745dbe41375ed3ccab3129`
+- Public CI build-transfer ID: `1CpzzVCoTWhvo67LZ5fEty_UruvDzsy08`
+- Exact source SHA-256: `d4f805b07b6cf8b683c788e7f0070865f7827de9e3745dbe41375ed3ccab3129`
 - V56 Gold HTML authority SHA-256: `210647bdc447a55072fe16b6c7d348c7a316a0e0099c07c965f448dbf24112bd`
 - App version: `56.0.0+5600`
 - Android package: `pro.botx.app`
@@ -21,4 +21,4 @@ This branch must build only the latest Elite HTML-aligned native Flutter source.
 - Duplicate Settings Backtesting row is absent
 - Offline deterministic broker/market identity rendering remains enabled
 
-The GitHub Actions workflow rejects the build if any mandatory marker is missing or if an old/rejected UI signature returns. The older locked source is not overwritten; it is not the build input for this branch.
+The GitHub Actions workflow downloads this exact SHA-locked latest source directly. It rejects the build if any mandatory marker is missing or if an old/rejected UI signature returns. The original locked 261 MB source archive and approved V56 HTML files remain untouched; only the CI build-transfer payload was advanced to this latest source.
