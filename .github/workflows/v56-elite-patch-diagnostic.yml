@@ -1,0 +1,108 @@
+name: BotX Pro V56 Elite Patch Diagnostic
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v56-elite-patch-diagnostic-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  diagnose-elite-patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SOURCE_FILE_ID: 1CpzzVCoTWhvo67LZ5fEty_UruvDzsy08
+      SOURCE_SHA256: 68ba3cc8a43347ed92c0a904da96bd23e94041f4eb92b07c1e4b65a860ba6b4d
+      PATCH_SOURCE_COMMIT: d39318ee5540632b6fbd81fb413b2455e845e6f7
+      RECONSTRUCTION_SHA: b1689b8159ac0f555fa6658f857e5b9d9b473bc840a6a4566ff2b8421f88b70f
+      DEMO_SHA: bd74e5546206dfd1c41ccf967c2ee5105a8ca9ebcfa53e3d88bbb4269b95b076
+      LOGO_SHA: 55cb6efb6c0879e2cb15e235a86ae645a29123a81136f26cae302e2b97465bb8
+      PERSISTENCE_SHA: 8bee1cab3afdc6fb215eccc5ee95b2836fdf597daee245323ea05b18b7058188
+      DISPOSE_SHA: 31c075d5d1388b7681b6f96e7a5c391be7d408ad42f801584372c8a74cd9562c
+      UI_SHA: 01bcfb500fa179225ea3c65c0cf5169f1009761707702c5a2a9b4d5ebfaff368
+      VISUAL_SHA: 7b67d331e6c0e31d6a49feb5a65619dbad142f4c39e66a6f0dccf37fb8823bba
+      ELITE_B64_SHA: 94c05324cf29e3b09f231bc92b2eebdb161498e394a730eddccf71a2979c7738
+      ELITE_GZIP_SHA: d3b0bbe31520f651c65c4505b60938a295fa65cc23848e640fb7a8fa4d31cd8e
+      ELITE_PATCH_SHA: 0c8c83ebfc3235e4c8c12631e86c2df45efd2e7a5015513eb6c31937055e0bc2
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Reconstruct exact pre-Elite source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/v56" "$GITHUB_WORKSPACE/app"
+          exec > >(tee "$RUNNER_TEMP/elite-diagnostic.log") 2>&1
+          curl --fail --location --retry 5 --retry-delay 3 \
+            "https://drive.usercontent.google.com/download?id=${SOURCE_FILE_ID}&export=download&confirm=t" \
+            -o "$RUNNER_TEMP/v56/source.tar.gz"
+          echo "${SOURCE_SHA256}  $RUNNER_TEMP/v56/source.tar.gz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/v56/source.tar.gz" -C "$GITHUB_WORKSPACE/app"
+
+          fetch_patch() {
+            local name="$1" path="$2" expected="$3"
+            curl --fail --location --retry 5 --retry-delay 3 \
+              "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${PATCH_SOURCE_COMMIT}/${path}" \
+              -o "$RUNNER_TEMP/v56/${name}.patch"
+            echo "${expected}  $RUNNER_TEMP/v56/${name}.patch" | sha256sum --check --strict
+          }
+          fetch_patch reconstruction .github/v56_patches/v56-reconstruction-mobile-fix.patch "$RECONSTRUCTION_SHA"
+          fetch_patch demo .github/v56_patches/v56-demo-certification-fix.patch "$DEMO_SHA"
+          fetch_patch logo .github/v56_patches/v56-logo-test-optimization-v7.patch "$LOGO_SHA"
+          fetch_patch persistence .github/v56_patches/v56-brokerless-demo-persistence.patch "$PERSISTENCE_SHA"
+          fetch_patch dispose .github/v56_patches/v56-demo-dispose-async-fix.patch "$DISPOSE_SHA"
+          fetch_patch ui .github/v56_patches/v56-ui-smoke-test-fix-v9-clean.patch "$UI_SHA"
+          fetch_patch visual .github/v56_patches/v56-visual-capture-async-fix.patch "$VISUAL_SHA"
+          cd "$GITHUB_WORKSPACE/app"
+          for name in reconstruction demo logo persistence dispose ui visual; do
+            patch --batch --forward -p1 < "$RUNNER_TEMP/v56/${name}.patch"
+          done
+
+      - name: Diagnose Elite update byte-for-byte
+        shell: bash
+        run: |
+          set -uo pipefail
+          exec >> >(tee -a "$RUNNER_TEMP/elite-diagnostic.log") 2>&1
+          cat .github/v56_elite_source_chunks/part-*.b64 > "$RUNNER_TEMP/v56/elite.patch.b64"
+          sha256sum "$RUNNER_TEMP/v56/elite.patch.b64"
+          echo "${ELITE_B64_SHA}  $RUNNER_TEMP/v56/elite.patch.b64" | sha256sum --check --strict || true
+          base64 --decode "$RUNNER_TEMP/v56/elite.patch.b64" > "$RUNNER_TEMP/v56/elite.patch.gz" || true
+          sha256sum "$RUNNER_TEMP/v56/elite.patch.gz" || true
+          echo "${ELITE_GZIP_SHA}  $RUNNER_TEMP/v56/elite.patch.gz" | sha256sum --check --strict || true
+          gunzip --stdout "$RUNNER_TEMP/v56/elite.patch.gz" > "$RUNNER_TEMP/v56/elite.patch" || true
+          sha256sum "$RUNNER_TEMP/v56/elite.patch" || true
+          echo "${ELITE_PATCH_SHA}  $RUNNER_TEMP/v56/elite.patch" | sha256sum --check --strict || true
+          wc -c "$RUNNER_TEMP/v56/elite.patch.b64" "$RUNNER_TEMP/v56/elite.patch.gz" "$RUNNER_TEMP/v56/elite.patch" || true
+          head -n 12 "$RUNNER_TEMP/v56/elite.patch" || true
+          cd "$GITHUB_WORKSPACE/app"
+          patch --verbose --batch --forward -p1 < "$RUNNER_TEMP/v56/elite.patch" || true
+          find . -name '*.rej' -print -exec sh -c 'echo "--- REJECT: $1"; cat "$1"' sh {} \; || true
+          echo '--- MARKERS ---'
+          grep -Fn "title: 'Sound & haptics'" lib/app/v56_native_shell.dart || true
+          grep -Fn 'deployment configuration is stored and new bots append in creation order' test/local_demo_engine_test.dart || true
+          grep -Fn 'Color(0xFF0B241D)' lib/core/theme/v56_theme.dart || true
+          grep -Fn 'Color(0xFF46E6B0)' lib/core/theme/v56_theme.dart || true
+          grep -Fn "title: 'Backtesting'" lib/app/v56_native_shell.dart || true
+          cp "$RUNNER_TEMP/v56/elite.patch" "$RUNNER_TEMP/elite.patch" || true
+          tar -czf "$RUNNER_TEMP/elite-rejects.tar.gz" $(find . -name '*.rej' -o -name '*.orig') 2>/dev/null || true
+
+      - name: Upload exact diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: botx-pro-v56-elite-patch-diagnostic
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/elite-diagnostic.log
+            ${{ runner.temp }}/elite.patch
+            ${{ runner.temp }}/elite-rejects.tar.gz
