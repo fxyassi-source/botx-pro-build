@@ -1,4 +1,4 @@
-name: BotX Pro V56 Elite Exact Source Release
+name: BotX Pro V56.0.1 Visual Recovery Release
 
 on:
   pull_request:
@@ -9,17 +9,17 @@ permissions:
   contents: read
 
 concurrency:
-  group: v56-elite-exact-source-${{ github.ref }}
+  group: v56-visual-recovery-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   android-release:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 100
     env:
       FINAL_SOURCE_FILE_ID: 1CpzzVCoTWhvo67LZ5fEty_UruvDzsy08
-      FINAL_SOURCE_SHA256: d4f805b07b6cf8b683c788e7f0070865f7827de9e3745dbe41375ed3ccab3129
-      UI_AUTHORITY_SHA256: 210647bdc447a55072fe16b6c7d348c7a316a0e0099c07c965f448dbf24112bd
+      FINAL_SOURCE_SHA256: e822a5f71114fb353e429145096823539cdc905f6ba503344850d0bdef9e5773
+      HTML_V6_AUTHORITY: BotX_Pro_V56_Elite_Market_Orders_Bots_Updated_v6.html
 
     steps:
       - name: 1. Checkout build authority
@@ -40,59 +40,63 @@ jobs:
           channel: stable
           cache: true
 
-      - name: 4. Download exact latest V56 Elite source
+      - name: 4. Download exact visual-recovery source
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/v56" "$GITHUB_WORKSPACE/app"
           curl --fail --location --retry 6 --retry-delay 3 \
             "https://drive.usercontent.google.com/download?id=${FINAL_SOURCE_FILE_ID}&export=download&confirm=t" \
-            -o "$RUNNER_TEMP/v56/final-source.tar.gz"
-          echo "${FINAL_SOURCE_SHA256}  $RUNNER_TEMP/v56/final-source.tar.gz" | sha256sum --check --strict
-          tar -xzf "$RUNNER_TEMP/v56/final-source.tar.gz" -C "$GITHUB_WORKSPACE/app"
+            -o "$RUNNER_TEMP/v56/source.tar.gz"
+          echo "${FINAL_SOURCE_SHA256}  $RUNNER_TEMP/v56/source.tar.gz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/v56/source.tar.gz" -C "$GITHUB_WORKSPACE/app"
 
-      - name: 5. Reject every old-UI fallback
+      - name: 5. Enforce exact UI authority and reject old UI
         working-directory: app
         shell: bash
         run: |
           set -euo pipefail
-          grep -F 'version: 56.0.0+5600' pubspec.yaml
+          grep -F 'version: 56.0.1+5601' pubspec.yaml
           grep -F 'namespace = "pro.botx.app"' android/app/build.gradle.kts
-          grep -F 'class V56NativeShell' lib/app/v56_native_shell.dart
-          grep -F "title: 'Sound & haptics'" lib/app/v56_native_shell.dart
-          grep -F "title: 'App sounds'" lib/app/v56_native_shell.dart
-          grep -F "title: 'Haptic feedback'" lib/app/v56_native_shell.dart
-          grep -F 'Tap a market pair to open its chart and AI analysis.' lib/app/v56_native_shell.dart
-          grep -F 'class _BotDeploymentConfigScreen' lib/app/v56_native_shell.dart
-          grep -F "labelText: 'Currency pair / market'" lib/app/v56_native_shell.dart
-          grep -F "labelText: 'Max positions'" lib/app/v56_native_shell.dart
-          grep -F "labelText: 'Timeframe'" lib/app/v56_native_shell.dart
-          grep -F "'Review & deploy bot'" lib/app/v56_native_shell.dart
-          grep -F 'deployment configuration is stored and new bots append in creation order' test/local_demo_engine_test.dart
-          grep -F 'Color(0xFF0B241D)' lib/core/theme/v56_theme.dart
-          grep -F 'Color(0xFF46E6B0)' lib/core/theme/v56_theme.dart
-          ! grep -F "title: 'Backtesting'" lib/app/v56_native_shell.dart
+          grep -F "String _key = 'dark';" lib/core/theme/v56_theme.dart
+          grep -F "static const _blueDefaultMigrationKey" lib/core/theme/v56_theme.dart
+
+          grep -F "key: const ValueKey('v56_dashboard_theme_cycle')" lib/app/v56_native_shell.dart
+          ! grep -F "'Appearance'" lib/app/v56_native_shell.dart
+          ! grep -F "title: 'Theme'" lib/app/v56_native_shell.dart
+
+          grep -F "key: const ValueKey('v56_tradingview_fullscreen')" lib/app/v56_native_shell.dart
+          grep -F "'Market Intelligence'" lib/app/v56_native_shell.dart
+          grep -F "'Market News'" lib/app/v56_native_shell.dart
+
+          grep -F "key: const ValueKey('v56_terminal_hub')" lib/app/v56_native_shell.dart
+          grep -F "key: const ValueKey('v56_deploy_your_strategies')" lib/app/v56_native_shell.dart
+          grep -F "key: const ValueKey('v56_bots_start_button')" lib/app/v56_native_shell.dart
+          grep -F "'Deploy Your Strategies'" lib/app/v56_native_shell.dart
+          grep -F "'Start bot'" lib/app/v56_native_shell.dart
+          grep -F "'Selected: \${symbol.toUpperCase()}'" lib/app/v56_native_shell.dart
+          grep -F "class _ActiveBotTile" lib/app/v56_native_shell.dart
+          grep -F "ordinal: bots.indexOf(bot) + 1" lib/app/v56_native_shell.dart
+          grep -F "positioned" /dev/null || true
+
+          grep -F "deployment configuration is stored and new bots append in creation order" test/local_demo_engine_test.dart
+          grep -F "Bots screen uses the complete HTML v6 selector and safe fixed CTA" test/v56_ui_smoke_test.dart
           ! grep -RIn 'webview_flutter\|flutter_html' pubspec.yaml
           ! grep -RIn 'google.com/s2/favicons\|class _NetworkBrokerLogo' lib
-          cat > BotX_Pro_V56_Elite_Source_Lock.txt <<EOF
-          Source file ID: ${FINAL_SOURCE_FILE_ID}
-          Source SHA-256: ${FINAL_SOURCE_SHA256}
-          V56 Gold HTML authority SHA-256: ${UI_AUTHORITY_SHA256}
-          Version: 56.0.0+5600
+
+          cat > BotX_Pro_V56_Visual_Recovery_Source_Lock.txt <<EOF
+          Version: 56.0.1+5601
           Package: pro.botx.app
+          Source SHA-256: ${FINAL_SOURCE_SHA256}
+          HTML authority: ${HTML_V6_AUTHORITY}
+          Default theme: Blue Dark
+          Settings theme UI: removed
+          Market: full chart, intelligence, scrollable news
+          Bots: full HTML v6 replacement
           Live mode: disabled
-          Old UI fallback: prohibited by build gates
           EOF
 
-      - name: 6. Apply exact analyzer cleanup
-        working-directory: app
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 "$GITHUB_WORKSPACE/.github/scripts/v56_elite_analyze_cleanup.py"
-          ! grep -RIn 'double _riskFraction\|String _brokerMark' lib/app
-
-      - name: 7. Configure memory and RC signing
+      - name: 6. Configure memory and RC signing
         working-directory: app
         shell: bash
         run: |
@@ -119,81 +123,56 @@ jobs:
                   result.append(value)
           path.write_text('\n'.join(result) + '\n')
           PY
-          keytool -genkeypair -keystore android/app/v56-elite-exact-rc.jks \
-            -storepass changeit-v56-elite-exact -keypass changeit-v56-elite-exact -alias v56eliteexact \
+          keytool -genkeypair -keystore android/app/v56-visual-recovery-rc.jks \
+            -storepass changeit-v56-visual -keypass changeit-v56-visual -alias v56visual \
             -keyalg RSA -keysize 3072 -validity 3650 \
-            -dname "CN=BotX Pro V56 Elite Exact RC, OU=Testing, O=BotX AI, L=Faridabad, ST=Haryana, C=IN"
+            -dname "CN=BotX Pro V56 Visual Recovery RC, OU=Testing, O=BotX AI, L=Faridabad, ST=Haryana, C=IN"
           cat > android/key.properties <<'EOF'
-          storePassword=changeit-v56-elite-exact
-          keyPassword=changeit-v56-elite-exact
-          keyAlias=v56eliteexact
-          storeFile=v56-elite-exact-rc.jks
+          storePassword=changeit-v56-visual
+          keyPassword=changeit-v56-visual
+          keyAlias=v56visual
+          storeFile=v56-visual-recovery-rc.jks
           EOF
 
-      - name: 8. Resolve dependencies
+      - name: 7. Resolve dependencies
         working-directory: app
         run: flutter pub get
 
-      - name: 9. Strict Flutter analyze
+      - name: 8. Strict Flutter analyze
         working-directory: app
         shell: bash
         run: |
           set -o pipefail
           flutter analyze --fatal-infos 2>&1 | tee "$RUNNER_TEMP/flutter-analyze.log"
 
-      - name: 10. Run isolated V56 UI tests
+      - name: 9. Run complete V56 UI regression suite
         working-directory: app
-        timeout-minutes: 28
+        timeout-minutes: 30
         shell: bash
         run: |
           set -euo pipefail
-          : > "$RUNNER_TEMP/flutter-regression.log"
-          ui_tests=(
-            "Skip for now enters the guest V56 shell"
-            "New users can open the create-account flow"
-            "Guest V56 shell creates a demo account from a virtual balance"
-            "Portfolio swipes to Add Broker inside the same carousel"
-            "Market keeps the XM-sized chart surface"
-            "Market chart opens the full-screen TradingView surface"
-            "All eight locked V56 theme modes are selectable"
-            "Terminal Hub double-tap opens complete history"
-            "Bots screen keeps compact Terminal Hub and deployment sections"
-            "Create My Own Bot opens as a full-screen route"
-            "Settings restores plans and hides developer-only rows"
-          )
-          for test_name in "${ui_tests[@]}"; do
-            echo "=== UI: ${test_name} ===" | tee -a "$RUNNER_TEMP/flutter-regression.log"
-            timeout 150s flutter test --concurrency=1 --reporter expanded \
-              test/v56_ui_smoke_test.dart --plain-name "$test_name" \
-              2>&1 | tee -a "$RUNNER_TEMP/flutter-regression.log"
-          done
+          flutter test --concurrency=1 --reporter expanded test/v56_ui_smoke_test.dart \
+            2>&1 | tee "$RUNNER_TEMP/flutter-ui.log"
 
-      - name: 11. Run isolated bot lifecycle tests
+      - name: 10. Run bot, market and chart contract tests
         working-directory: app
-        timeout-minutes: 16
+        timeout-minutes: 25
         shell: bash
         run: |
           set -euo pipefail
-          bot_tests=(
-            "local demo certifies all five bot families and emergency-stop semantics"
-            "local demo persists wallet bots positions and trade history across restart"
-            "corrupt local demo snapshot fails closed and restores legacy wallet only"
-            "deployment configuration is stored and new bots append in creation order"
-          )
-          for test_name in "${bot_tests[@]}"; do
-            echo "=== BOT: ${test_name} ===" | tee -a "$RUNNER_TEMP/flutter-regression.log"
-            timeout 180s flutter test --concurrency=1 --reporter expanded \
-              test/local_demo_engine_test.dart --plain-name "$test_name" \
-              2>&1 | tee -a "$RUNNER_TEMP/flutter-regression.log"
+          : > "$RUNNER_TEMP/flutter-contracts.log"
+          for test_file in \
+            test/local_demo_engine_test.dart \
+            test/market_identity_logo_test.dart \
+            test/chart_datafeed_contract_test.dart; do
+            echo "=== ${test_file} ===" | tee -a "$RUNNER_TEMP/flutter-contracts.log"
+            flutter test --concurrency=1 --reporter expanded "$test_file" \
+              2>&1 | tee -a "$RUNNER_TEMP/flutter-contracts.log"
           done
-          flutter test --concurrency=1 --reporter expanded test/market_identity_logo_test.dart \
-            2>&1 | tee -a "$RUNNER_TEMP/flutter-regression.log"
-          flutter test --concurrency=1 --reporter expanded test/chart_datafeed_contract_test.dart \
-            2>&1 | tee -a "$RUNNER_TEMP/flutter-regression.log"
 
-      - name: 12. Capture seven V56 verification screenshots
+      - name: 11. Capture seven visual verification screenshots
         working-directory: app
-        timeout-minutes: 15
+        timeout-minutes: 18
         shell: bash
         run: |
           set -euo pipefail
@@ -203,7 +182,7 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/flutter-visual.log"
           test "$(find test/goldens/generated -name '*.png' | wc -l)" -eq 7
 
-      - name: 13. Build signed ARM64 APK
+      - name: 12. Build signed ARM64 APK
         working-directory: app
         shell: bash
         run: |
@@ -212,7 +191,7 @@ jobs:
             --dart-define=ALLOW_LIVE_MODE=false \
             2>&1 | tee "$RUNNER_TEMP/flutter-apk.log"
 
-      - name: 14. Build Android App Bundle
+      - name: 13. Build Android App Bundle
         working-directory: app
         shell: bash
         run: |
@@ -220,7 +199,7 @@ jobs:
           flutter build appbundle --release --dart-define=ALLOW_LIVE_MODE=false \
             2>&1 | tee "$RUNNER_TEMP/flutter-aab.log"
 
-      - name: 15. Verify signing, secrets and hashes
+      - name: 14. Verify packages and create clean source
         working-directory: app
         shell: bash
         run: |
@@ -232,51 +211,51 @@ jobs:
           APK_SIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
           "$APK_SIGNER" verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/apksigner.log"
           ! strings "$APK" | grep -Eq 'sk-[A-Za-z0-9]{16,}|gsk_[A-Za-z0-9]{16,}|AIza[0-9A-Za-z_-]{24,}'
-          cp "$APK" BotX_Pro_V56_Elite_Exact_UI_ARM64_RC.apk
-          cp "$AAB" BotX_Pro_V56_Elite_Exact_UI_RC.aab
+          cp "$APK" BotX_Pro_V56_0_1_Visual_Recovery_ARM64_RC.apk
+          cp "$AAB" BotX_Pro_V56_0_1_Visual_Recovery_RC.aab
           tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
             --exclude='./build' --exclude='./.dart_tool' --exclude='./android/app/*.jks' \
             --exclude='./android/key.properties' \
-            -czf "$RUNNER_TEMP/BotX_Pro_V56_Elite_Exact_UI_SOURCE_BUILD_CLEAN.tar.gz" .
-          sha256sum BotX_Pro_V56_Elite_Exact_UI_ARM64_RC.apk \
-            BotX_Pro_V56_Elite_Exact_UI_RC.aab \
-            BotX_Pro_V56_Elite_Source_Lock.txt \
-            "$RUNNER_TEMP/BotX_Pro_V56_Elite_Exact_UI_SOURCE_BUILD_CLEAN.tar.gz" \
-            | tee BotX_Pro_V56_Elite_Exact_UI_SHA256SUMS.txt
+            -czf "$RUNNER_TEMP/BotX_Pro_V56_0_1_Visual_Recovery_SOURCE_BUILD_CLEAN.tar.gz" .
+          sha256sum BotX_Pro_V56_0_1_Visual_Recovery_ARM64_RC.apk \
+            BotX_Pro_V56_0_1_Visual_Recovery_RC.aab \
+            BotX_Pro_V56_Visual_Recovery_Source_Lock.txt \
+            "$RUNNER_TEMP/BotX_Pro_V56_0_1_Visual_Recovery_SOURCE_BUILD_CLEAN.tar.gz" \
+            | tee BotX_Pro_V56_0_1_Visual_Recovery_SHA256SUMS.txt
 
-      - name: 16. Upload diagnostics
+      - name: 15. Upload diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: botx-pro-v56-elite-exact-diagnostics
+          name: botx-pro-v56-visual-recovery-diagnostics
           if-no-files-found: ignore
           retention-days: 14
           path: |
             ${{ runner.temp }}/flutter-analyze.log
-            ${{ runner.temp }}/flutter-regression.log
+            ${{ runner.temp }}/flutter-ui.log
+            ${{ runner.temp }}/flutter-contracts.log
             ${{ runner.temp }}/flutter-visual.log
             ${{ runner.temp }}/flutter-apk.log
             ${{ runner.temp }}/flutter-aab.log
             ${{ runner.temp }}/apksigner.log
 
-      - name: 17. Upload screenshots
+      - name: 16. Upload screenshots
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: botx-pro-v56-elite-exact-screenshots
+          name: botx-pro-v56-visual-recovery-screenshots
           retention-days: 14
           path: app/test/goldens/generated/*.png
 
-      - name: 18. Upload exact Android release and source lock
+      - name: 17. Upload Android release
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: botx-pro-v56-elite-exact-android
+          name: botx-pro-v56-visual-recovery-android
           retention-days: 14
           path: |
-            app/BotX_Pro_V56_Elite_Exact_UI_ARM64_RC.apk
-            app/BotX_Pro_V56_Elite_Exact_UI_RC.aab
-            app/BotX_Pro_V56_Elite_Exact_UI_SHA256SUMS.txt
-            app/BotX_Pro_V56_Elite_Source_Lock.txt
-            ${{ runner.temp }}/v56/final-source.tar.gz
-            ${{ runner.temp }}/BotX_Pro_V56_Elite_Exact_UI_SOURCE_BUILD_CLEAN.tar.gz
+            app/BotX_Pro_V56_0_1_Visual_Recovery_ARM64_RC.apk
+            app/BotX_Pro_V56_0_1_Visual_Recovery_RC.aab
+            app/BotX_Pro_V56_0_1_Visual_Recovery_SHA256SUMS.txt
+            app/BotX_Pro_V56_Visual_Recovery_Source_Lock.txt
+            ${{ runner.temp }}/BotX_Pro_V56_0_1_Visual_Recovery_SOURCE_BUILD_CLEAN.tar.gz
