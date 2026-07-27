@@ -18,7 +18,7 @@ jobs:
     timeout-minutes: 100
     env:
       SOURCE_FILE_ID: 1CpzzVCoTWhvo67LZ5fEty_UruvDzsy08
-      SOURCE_SHA256: d979c0b8dd0a647435b366fe6b85b69e7f282560f151e00897d323e761a00ee6
+      SOURCE_SHA256: 9972c9ea3aa2d73dd1accb510f263a8d39e504db09c6ad0bdfd9ccfeb64b4ed3
 
     steps:
       - name: Checkout build authority
