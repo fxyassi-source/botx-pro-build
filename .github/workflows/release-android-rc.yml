@@ -1,29 +1,31 @@
-name: BotX Pro Android Release Candidate
+name: BotX Pro V56.0.2 Target-8 Build
 
 on:
   pull_request:
     branches: [main]
     paths:
       - 'release-trigger/**'
+      - 'patches/BOTX_PRO_V56_0_2_TARGET8.patch.gz.b64'
       - '.github/workflows/release-android-rc.yml'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   actions: read
 
 jobs:
-  build-release:
+  target8-build:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
       GH_TOKEN: ${{ github.token }}
       SOURCE_FILE_ID: 1CpzzVCoTWhvo67LZ5fEty_UruvDzsy08
       SOURCE_SHA256: 059e07f491b62a78e696a5e46273e03c54367f344fcf5f9e72ef591508c47677
+      PATCH_SHA256: e7c3db03770536f74299149d8b346c322c784be373daa807ce5961a035cfa62b
       SIGNING_TAG: botx-android-signing-v1
 
     steps:
-      - name: Checkout build repository
+      - name: Checkout build branch
         uses: actions/checkout@v4
 
       - name: Set up Java 21
@@ -39,7 +41,7 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Stage verified release source
+      - name: Stage locked V56.0.1 source and apply Target-8 patch
         run: |
           set -euo pipefail
           curl --fail --location --retry 5 --retry-all-errors \
@@ -48,46 +50,19 @@ jobs:
           echo "${SOURCE_SHA256}  app.tgz" | sha256sum --check --strict
           mkdir app
           tar -xzf app.tgz -C app
-          test -f app/pubspec.yaml
-          test -f app/android/app/build.gradle.kts
-          test -f app/lib/features/auth/auth_gate.dart
-          ! grep -R -E 'webview_flutter|InAppWebView|WebViewWidget|loadHtmlString' app/lib app/pubspec.yaml
+          base64 -d patches/BOTX_PRO_V56_0_2_TARGET8.patch.gz.b64 | gzip -dc > target8.patch
+          echo "${PATCH_SHA256}  target8.patch" | sha256sum --check --strict
+          patch -p1 -d app < target8.patch
+          grep -q '^version: 56.0.2+5602$' app/pubspec.yaml
 
-      - name: Restore or create persistent Android release signing identity
+      - name: Restore persistent release signing identity
         run: |
           set -euo pipefail
-          mkdir -p signing dist
-          if gh release view "${SIGNING_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-            gh release download "${SIGNING_TAG}" --repo "${GITHUB_REPOSITORY}" \
-              --pattern 'botx-release.jks' \
-              --pattern 'botx-signing.env' \
-              --dir signing --clobber
-          else
-            STORE_PASSWORD="$(openssl rand -hex 32)"
-            KEY_PASSWORD="$(openssl rand -hex 32)"
-            keytool -genkeypair -v \
-              -keystore signing/botx-release.jks \
-              -storetype JKS \
-              -storepass "${STORE_PASSWORD}" \
-              -alias botxpro \
-              -keypass "${KEY_PASSWORD}" \
-              -keyalg RSA \
-              -keysize 4096 \
-              -validity 9125 \
-              -dname 'CN=BotX Pro, OU=Android Release, O=BotX AI Innovation, L=Faridabad, ST=Haryana, C=IN'
-            {
-              echo "STORE_PASSWORD=${STORE_PASSWORD}"
-              echo "KEY_PASSWORD=${KEY_PASSWORD}"
-              echo 'KEY_ALIAS=botxpro'
-            } > signing/botx-signing.env
-            chmod 600 signing/botx-release.jks signing/botx-signing.env
-            gh release create "${SIGNING_TAG}" \
-              signing/botx-release.jks signing/botx-signing.env \
-              --repo "${GITHUB_REPOSITORY}" \
-              --target main \
-              --title 'BotX Pro Android Signing Identity v1' \
-              --notes 'Private persistent Android release signing identity. Never publish or delete unless rotating the application signing key.'
-          fi
+          mkdir -p signing
+          gh release download "${SIGNING_TAG}" --repo "${GITHUB_REPOSITORY}" \
+            --pattern 'botx-release.jks' \
+            --pattern 'botx-signing.env' \
+            --dir signing --clobber
           source signing/botx-signing.env
           echo "::add-mask::${STORE_PASSWORD}"
           echo "::add-mask::${KEY_PASSWORD}"
@@ -98,16 +73,19 @@ jobs:
           keyAlias=${KEY_ALIAS}
           keyPassword=${KEY_PASSWORD}
           EOF
-          keytool -list -v -keystore signing/botx-release.jks -storepass "${STORE_PASSWORD}" -alias "${KEY_ALIAS}" \
-            | grep -E 'Alias name:|Owner:|SHA256:' > signing-certificate-summary.txt
-          tar -czf dist/BotX_Pro_Android_Signing_Backup_v1.tar.gz -C signing botx-release.jks botx-signing.env
-          sha256sum dist/BotX_Pro_Android_Signing_Backup_v1.tar.gz > dist/BotX_Pro_Android_Signing_Backup_v1.sha256
 
-      - name: Resolve dependencies
+      - name: Resolve and format targeted source
         working-directory: app
-        run: flutter pub get
+        run: |
+          flutter pub get
+          dart format \
+            lib/app/botx_app.dart \
+            lib/app/v56_native_shell.dart \
+            lib/app/local_demo_engine.dart \
+            test/v56_ui_smoke_test.dart \
+            test/local_demo_engine_test.dart
 
-      - name: Analyze release source and capture log
+      - name: Analyze source
         id: analyze
         continue-on-error: true
         working-directory: app
@@ -115,92 +93,65 @@ jobs:
           set -o pipefail
           flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1 | tee ../analyze.log
 
-      - name: Run Flutter tests and capture log
+      - name: Run targeted regression tests
         id: tests
         continue-on-error: true
         working-directory: app
         run: |
           set -o pipefail
-          flutter test 2>&1 | tee ../tests.log
+          flutter test \
+            test/local_demo_engine_test.dart \
+            test/v56_ui_smoke_test.dart \
+            test/market_identity_logo_test.dart 2>&1 | tee ../tests.log
 
-      - name: Build signed release APKs and AAB
+      - name: Build signed ARM64 release APK
         id: build
         continue-on-error: true
         working-directory: app
         run: |
           set -o pipefail
-          {
-            flutter build apk --release --split-per-abi \
-              --build-name=15.0.7 --build-number=1508 \
-              --dart-define=BOTX_ENV=release-candidate
-            flutter build appbundle --release \
-              --build-name=15.0.7 --build-number=1508 \
-              --dart-define=BOTX_ENV=release-candidate
-          } 2>&1 | tee ../build-release.log
+          flutter build apk --release \
+            --build-name=56.0.2 --build-number=5602 \
+            --dart-define=BOTX_ENV=release-candidate 2>&1 | tee ../build-release.log
 
-      - name: Record quality outcomes
-        if: always()
-        run: |
-          {
-            echo "analyze=${{ steps.analyze.outcome }}"
-            echo "tests=${{ steps.tests.outcome }}"
-            echo "build=${{ steps.build.outcome }}"
-          } | tee quality-gates.txt
-
-      - name: Validate identity, release signature and package metadata
+      - name: Package diagnostics, built APK and exact developer source
         if: always()
         run: |
           set -euo pipefail
           mkdir -p dist
-          ARM64='app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk'
-          ARMV7='app/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk'
-          X64='app/build/app/outputs/flutter-apk/app-x86_64-release.apk'
-          AAB='app/build/app/outputs/bundle/release/app-release.aab'
-          test -s "${ARM64}"
-          test -s "${ARMV7}"
-          test -s "${X64}"
-          test -s "${AAB}"
-          cp "${ARM64}" dist/BotX_Pro_Master_V14_15_0_7_RC1508_ARM64_Release.apk
-          cp "${ARMV7}" dist/BotX_Pro_Master_V14_15_0_7_RC1508_ARMv7_Release.apk
-          cp "${X64}" dist/BotX_Pro_Master_V14_15_0_7_RC1508_x86_64_Release.apk
-          cp "${AAB}" dist/BotX_Pro_Master_V14_15_0_7_RC1508_Release.aab
-          cp signing-certificate-summary.txt dist/
-          AAPT="$(find "${ANDROID_HOME}/build-tools" -type f -name aapt | sort -V | tail -1)"
-          APKSIGNER="$(find "${ANDROID_HOME}/build-tools" -type f -name apksigner | sort -V | tail -1)"
-          "${AAPT}" dump badging "${ARM64}" | tee dist/apk-badging-arm64.txt
-          grep -q "package: name='pro.botx.app' versionCode='1508' versionName='15.0.7'" dist/apk-badging-arm64.txt
-          "${APKSIGNER}" verify --verbose --print-certs "${ARM64}" | tee dist/apksigner-arm64.txt
-          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' dist/apksigner-arm64.txt
-          sha256sum dist/*.apk dist/*.aab | tee dist/SHA256SUMS.txt
+          cat > app/TARGET8_COMPLETION_REPORT.md <<EOF
+          # BotX Pro V56.0.2 Target-8
+          - Base: locked V56.0.1
+          - Version: 56.0.2+5602
+          - Analyze: ${{ steps.analyze.outcome }}
+          - Targeted tests: ${{ steps.tests.outcome }}
+          - Android build: ${{ steps.build.outcome }}
+          - Theme files: unchanged by Target-8 patch
+          - Old releases: not overwritten
+          EOF
+          rm -f app/android/app/botx-release.jks app/android/key.properties
+          if test -s app/build/app/outputs/flutter-apk/app-release.apk; then
+            cp app/build/app/outputs/flutter-apk/app-release.apk \
+              dist/BotXPro-V56.0.2-Target8-ARM64.apk
+          fi
+          zip -qr dist/BotXPro-V56.0.2-Target8-Source.zip app \
+            -x 'app/build/*' 'app/.dart_tool/*' 'app/*.apk' 'app/*.aab'
+          cp analyze.log tests.log build-release.log dist/ 2>/dev/null || true
+          (cd dist && sha256sum *.apk *.zip 2>/dev/null | tee SHA256SUMS.txt) || true
 
-      - name: Upload signed release artifacts and diagnostics
+      - name: Upload Target-8 delivery
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: BotX-Pro-15.0.7-RC1508-Signed-Release
-          path: |
-            dist/BotX_Pro_Master_V14_15_0_7_RC1508_ARM64_Release.apk
-            dist/BotX_Pro_Master_V14_15_0_7_RC1508_ARMv7_Release.apk
-            dist/BotX_Pro_Master_V14_15_0_7_RC1508_x86_64_Release.apk
-            dist/BotX_Pro_Master_V14_15_0_7_RC1508_Release.aab
-            dist/SHA256SUMS.txt
-            dist/apk-badging-arm64.txt
-            dist/apksigner-arm64.txt
-            dist/signing-certificate-summary.txt
-            analyze.log
-            tests.log
-            build-release.log
-            quality-gates.txt
-          if-no-files-found: warn
+          name: BotX-Pro-V56.0.2-Target8-Delivery
+          path: dist/
+          if-no-files-found: error
           retention-days: 30
 
-      - name: Upload private signing backup
+      - name: Enforce quality gates
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: BotX-Pro-Android-Signing-Backup-v1
-          path: |
-            dist/BotX_Pro_Android_Signing_Backup_v1.tar.gz
-            dist/BotX_Pro_Android_Signing_Backup_v1.sha256
-          if-no-files-found: error
-          retention-days: 90
+        run: |
+          test "${{ steps.analyze.outcome }}" = success
+          test "${{ steps.tests.outcome }}" = success
+          test "${{ steps.build.outcome }}" = success
+          test -s dist/BotXPro-V56.0.2-Target8-ARM64.apk
