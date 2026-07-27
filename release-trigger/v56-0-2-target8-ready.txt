@@ -1,1 +1,2 @@
 Ready for PR build.
+Synchronize trigger after PR creation.
