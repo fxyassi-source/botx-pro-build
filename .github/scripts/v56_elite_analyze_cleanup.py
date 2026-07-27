@@ -11,8 +11,20 @@ for path, block in replacements.items():
         raise SystemExit(f'Expected cleanup block not found: {path}')
     path.write_text(text.replace(block, '', 1))
 
+# A separate, actively used broker-logo helper has the same private name.
+# Rename it only to keep the release guard precise; behavior is unchanged.
+identity_path = Path('lib/app/market_identity_logo.dart')
+identity = identity_path.read_text()
+rename_count = identity.count('_brokerMark(')
+if rename_count < 2:
+    raise SystemExit('Expected active market broker-mark helper/calls not found')
+identity_path.write_text(identity.replace('_brokerMark(', '_marketBrokerMark('))
+
 shell = Path('lib/app/v56_native_shell.dart').read_text()
 engine = Path('lib/app/local_demo_engine.dart').read_text()
+identity = identity_path.read_text()
 assert 'String _brokerMark(' not in shell
 assert 'double _riskFraction(' not in engine
-print('Removed exactly two unused private helpers; no UI or trading behavior changed.')
+assert '_brokerMark(' not in identity
+assert '_marketBrokerMark(' in identity
+print('Removed exactly two unused helpers and renamed one active private logo helper; behavior unchanged.')
