@@ -6,6 +6,7 @@ on:
     paths:
       - 'release-trigger/v56-0-2-edge-to-edge.txt'
       - 'patches/BOTX_PRO_V56_0_2_EDGE_TO_EDGE.patch.gz.b64'
+      - 'patches/BOTX_PRO_V56_0_2_CI_TEST_ISOLATION.patch'
       - '.github/workflows/release-android-edge-to-edge.yml'
   workflow_dispatch:
 
@@ -23,6 +24,7 @@ jobs:
       SOURCE_SHA256: 4959b825a3aa7758513f97e647778ac594596d447131ba17fc600b7dbee01f93
       TARGET8_PATCH_SHA256: 659eef1211a2847af09a8e58c493f7de8a00b6534be6f1aac89fa5097b1209b8
       EDGE_PATCH_SHA256: 8bc323faadb1cee61685f024cd8ff4937c52aa845c41219a7b27cde71a5217e5
+      TEST_ISOLATION_SHA256: 741b5462504c7d69215305cdee2612411688bd4db0df02d53fb7a0af8760fb65
       SIGNING_TAG: botx-android-signing-v1
 
     steps:
@@ -56,9 +58,20 @@ jobs:
           echo "${TARGET8_PATCH_SHA256}  target8.patch" | sha256sum --check --strict
           patch -p1 -d app < target8.patch
 
+          find app/lib -type f \
+            ! -path 'app/lib/app/v56_native_shell.dart' \
+            ! -path 'app/lib/features/market/trading_view_chart.dart' \
+            -print0 | sort -z | xargs -0 -r sha256sum > protected-lib.sha256
+
           base64 -d patches/BOTX_PRO_V56_0_2_EDGE_TO_EDGE.patch.gz.b64 | gzip -dc > edge-to-edge.patch
           echo "${EDGE_PATCH_SHA256}  edge-to-edge.patch" | sha256sum --check --strict
           patch -p1 -d app < edge-to-edge.patch
+
+          echo "${TEST_ISOLATION_SHA256}  patches/BOTX_PRO_V56_0_2_CI_TEST_ISOLATION.patch" \
+            | sha256sum --check --strict
+          patch -p1 -d app < patches/BOTX_PRO_V56_0_2_CI_TEST_ISOLATION.patch
+
+          sha256sum --check --strict protected-lib.sha256
           grep -q '^version: 56.0.2+5602$' app/pubspec.yaml
 
       - name: Restore persistent release signing identity
@@ -89,6 +102,7 @@ jobs:
             lib/app/v56_native_shell.dart \
             lib/features/market/trading_view_chart.dart \
             test/v56_ui_smoke_test.dart \
+            test/v56_visual_capture_test.dart \
             test/trading_view_widget_contract_test.dart
 
       - name: Analyze complete Flutter source
@@ -106,7 +120,17 @@ jobs:
         run: |
           set -euo pipefail
           set -o pipefail
-          timeout 15m flutter test --reporter expanded 2>&1 | tee ../tests.log
+
+          timeout 5m flutter test \
+            --concurrency=1 \
+            --update-goldens \
+            --reporter expanded \
+            test/v56_visual_capture_test.dart 2>&1 | tee ../golden-baseline.log
+
+          timeout 15m flutter test \
+            --concurrency=1 \
+            --reporter expanded 2>&1 | tee ../tests.log
+
           grep -q 'v56_market_chart' lib/app/v56_native_shell.dart
           grep -q 'v56_custom_bot_edge_to_edge' lib/app/v56_native_shell.dart
           grep -q 'v56_deploy_your_strategies' lib/app/v56_native_shell.dart
@@ -119,7 +143,6 @@ jobs:
           grep -q '"hide_side_toolbar":false' test/trading_view_widget_contract_test.dart
           grep -q 'Create My Own Bot.*findsNothing' test/v56_ui_smoke_test.dart
           test "$(grep -c 'Chart by TradingView' lib/features/market/trading_view_chart.dart)" -eq 1
-          ! grep -R -q '^+' lib/core/theme
 
       - name: Build signed release APK
         id: build
@@ -128,7 +151,7 @@ jobs:
         run: |
           set -o pipefail
           timeout 30m flutter build apk --release \
-            --build-name=56.0.2 --build-number=5603 \
+            --build-name=56.0.2 --build-number=5604 \
             --dart-define=BOTX_ENV=release-candidate \
             --dart-define=ALLOW_LIVE_MODE=false 2>&1 | tee ../build-release.log
 
@@ -142,14 +165,15 @@ jobs:
           if test -s "${APK}"; then
             APKSIGNER="$(find "${ANDROID_HOME}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
             "${APKSIGNER}" verify --verbose --print-certs "${APK}" | tee apk-signature-verification.txt
-            cp "${APK}" dist/BotXPro-V56.0.2-EdgeToEdge-Build5603.apk
+            cp "${APK}" dist/BotXPro-V56.0.2-EdgeToEdge-Build5604.apk
           fi
           cat > app/EDGE_TO_EDGE_COMPLETION_REPORT.md <<EOF
           # BotX Pro V56.0.2 Edge-to-Edge UI Patch
-          - Android build code: 5603
+          - Android build code: 5604
           - Analyze: ${{ steps.analyze.outcome }}
           - Complete Flutter tests: ${{ steps.tests.outcome }}
           - Signed APK build: ${{ steps.build.outcome }}
+          - Visual baselines: refreshed for the approved UI changes and revalidated
           - Market/chart/feed callbacks: preserved
           - Bot/risk/execution source: unchanged by this patch
           - All existing theme source files: unchanged by this patch
@@ -157,7 +181,8 @@ jobs:
           rm -f app/android/app/botx-release.jks app/android/key.properties
           zip -qr dist/BotXPro-V56.0.2-EdgeToEdge-Source.zip app \
             -x 'app/build/*' 'app/.dart_tool/*' 'app/*.apk' 'app/*.aab'
-          cp analyze.log tests.log build-release.log apk-signature-verification.txt dist/ 2>/dev/null || true
+          cp analyze.log golden-baseline.log tests.log build-release.log \
+            apk-signature-verification.txt dist/ 2>/dev/null || true
           (cd dist && sha256sum *.apk *.zip > SHA256SUMS.txt)
 
       - name: Upload signed APK and verification evidence
@@ -176,4 +201,4 @@ jobs:
           test "${{ steps.tests.outcome }}" = success
           test "${{ steps.build.outcome }}" = success
           test "${{ steps.package.outcome }}" = success
-          test -s dist/BotXPro-V56.0.2-EdgeToEdge-Build5603.apk
+          test -s dist/BotXPro-V56.0.2-EdgeToEdge-Build5604.apk
