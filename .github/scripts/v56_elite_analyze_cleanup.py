@@ -24,7 +24,7 @@ identity_path.write_text(identity.replace('_brokerMark(', '_marketBrokerMark('))
 test_path = Path('test/v56_ui_smoke_test.dart')
 test_text = test_path.read_text()
 old_market_test = """  testWidgets('Market keeps the XM-sized chart surface', (tester) async {\n    await pumpGuestShell(tester, size: const Size(390, 844));\n    await tester.tap(find.byKey(const ValueKey('v56_nav_market')));\n    await tester.pump(const Duration(milliseconds: 250));\n\n    final chart = find.byKey(const ValueKey('v56_market_chart'));\n    expect(chart, findsOneWidget);\n    expect(tester.getSize(chart).height, 300);\n    expect(find.text('Trend'), findsOneWidget);\n    expect(find.text('Volatility'), findsOneWidget);\n    expect(find.text('Regime'), findsWidgets);\n  });\n"""
-new_market_test = """  testWidgets('Market keeps every chart closed until a pair is tapped', (\n    tester,\n  ) async {\n    await pumpGuestShell(tester, size: const Size(390, 844));\n    await tester.tap(find.byKey(const ValueKey('v56_nav_market')));\n    await tester.pump(const Duration(milliseconds: 250));\n\n    expect(find.byKey(const ValueKey('v56_market_chart')), findsNothing);\n    expect(find.byKey(const ValueKey('v56_market_pair_EURUSD')), findsOneWidget);\n    expect(\n      find.text('Tap a market pair to open its chart and AI analysis.'),\n      findsOneWidget,\n    );\n  });\n"""
+new_market_test = """  testWidgets(\n    'Market keeps the XM-sized chart surface closed until a pair is tapped',\n    (tester) async {\n      await pumpGuestShell(tester, size: const Size(390, 844));\n      await tester.tap(find.byKey(const ValueKey('v56_nav_market')));\n      await tester.pump(const Duration(milliseconds: 250));\n\n      expect(find.byKey(const ValueKey('v56_market_chart')), findsNothing);\n      expect(\n        find.byKey(const ValueKey('v56_market_pair_EURUSD')),\n        findsOneWidget,\n      );\n      expect(\n        find.text('Tap a market pair to open its chart and AI analysis.'),\n        findsOneWidget,\n      );\n    },\n  );\n"""
 if old_market_test not in test_text:
     raise SystemExit('Expected inherited market smoke test block not found')
 test_text = test_text.replace(old_market_test, new_market_test, 1)
@@ -42,6 +42,6 @@ assert 'String _brokerMark(' not in shell
 assert 'double _riskFraction(' not in engine
 assert '_brokerMark(' not in identity
 assert '_marketBrokerMark(' in identity
-assert 'Market keeps every chart closed until a pair is tapped' in updated_tests
-assert "testWidgets('Market keeps the XM-sized chart surface'" not in updated_tests
+assert 'Market keeps the XM-sized chart surface closed until a pair is tapped' in updated_tests
+assert "testWidgets('Market keeps the XM-sized chart surface'," not in updated_tests
 print('Applied exact analyze cleanup and tap-only market test alignment; app UI behavior unchanged.')
