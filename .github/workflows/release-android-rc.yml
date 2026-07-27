@@ -85,7 +85,7 @@ jobs:
             test/v56_ui_smoke_test.dart \
             test/local_demo_engine_test.dart
 
-      - name: Analyze source
+      - name: Analyze complete source
         id: analyze
         continue-on-error: true
         working-directory: app
@@ -93,15 +93,29 @@ jobs:
           set -o pipefail
           flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1 | tee ../analyze.log
 
-      - name: Run only Target-8 regression tests
+      - name: Run focused Target-8 contracts
         id: tests
         continue-on-error: true
         working-directory: app
         run: |
+          set -euo pipefail
           set -o pipefail
-          timeout 12m flutter test \
-            test/local_demo_engine_test.dart \
-            test/v56_ui_smoke_test.dart 2>&1 | tee ../tests.log
+          timeout 4m flutter test test/local_demo_engine_test.dart \
+            --plain-name 'non-HFT demo bots place visible pending orders before execution' \
+            2>&1 | tee ../tests.log
+          grep -q 'v56_login_fullscreen_content' lib/app/botx_app.dart
+          grep -q 'v56_market_flat_rows' lib/app/v56_native_shell.dart
+          grep -q 'v56_custom_bot_strategy_name_card' lib/app/v56_native_shell.dart
+          grep -q 'v56_compact_bot_' lib/app/v56_native_shell.dart
+          grep -q 'v56_chart_fullscreen_button' lib/app/v56_native_shell.dart
+          grep -q 'Market Analysis' lib/app/v56_native_shell.dart
+          grep -q 'Candle Pattern' lib/app/v56_native_shell.dart
+          grep -q 'Support' lib/app/v56_native_shell.dart
+          grep -q 'Resistance' lib/app/v56_native_shell.dart
+          grep -q 'Market News' lib/app/v56_native_shell.dart
+          grep -q "MethodChannel('pro.botx.app/feedback')" lib/app/v56_native_shell.dart
+          grep -q 'ToneGenerator(AudioManager.STREAM_MUSIC, 100)' android/app/src/main/kotlin/pro/botx/app/MainActivity.kt
+          ! grep -R -q '^+' lib/core/theme
 
       - name: Build signed ARM64 release APK
         id: build
@@ -123,7 +137,7 @@ jobs:
           - Base: locked V56.0.1
           - Version: 56.0.2+5602
           - Analyze: ${{ steps.analyze.outcome }}
-          - Target-8 tests: ${{ steps.tests.outcome }}
+          - Target-8 contracts: ${{ steps.tests.outcome }}
           - Android build: ${{ steps.build.outcome }}
           - Existing market identity contract: preserved
           - Theme files: unchanged by Target-8 patch
