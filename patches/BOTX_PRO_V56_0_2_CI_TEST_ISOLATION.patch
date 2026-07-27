@@ -1,0 +1,31 @@
+--- a/test/v56_ui_smoke_test.dart
++++ b/test/v56_ui_smoke_test.dart
+@@ -82,7 +82,7 @@
+     guestMode: true,
+   );
+   final themeController = V56ThemeController();
+-  await tester.runAsync(() => appController.initialize());
++  await appController.initialize();
+   await tester.pumpWidget(
+     MaterialApp(
+       debugShowCheckedModeBanner: false,
+@@ -150,7 +150,7 @@
+       guestMode: true,
+     );
+     final themeController = V56ThemeController();
+-    await tester.runAsync(() => appController.initialize());
++    await appController.initialize();
+     await tester.pumpWidget(
+       MaterialApp(
+         debugShowCheckedModeBanner: false,
+--- a/test/v56_visual_capture_test.dart
++++ b/test/v56_visual_capture_test.dart
+@@ -56,7 +56,7 @@
+   });
+   final controller = V16AppController(config: offlineConfig, guestMode: true);
+   final themes = V56ThemeController();
+-  await tester.runAsync(() => controller.initialize());
++  await controller.initialize();
+   await tester.pumpWidget(
+     MaterialApp(
+       debugShowCheckedModeBanner: false,
