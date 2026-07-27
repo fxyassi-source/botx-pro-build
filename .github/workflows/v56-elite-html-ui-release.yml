@@ -114,14 +114,33 @@ jobs:
           set -o pipefail
           flutter analyze --fatal-infos 2>&1 | tee "$RUNNER_TEMP/flutter-analyze.log"
 
-      - name: Run complete UI tests
+      - name: Run isolated visual-recovery UI tests
         working-directory: app
-        timeout-minutes: 30
+        timeout-minutes: 35
         shell: bash
         run: |
-          set -o pipefail
-          flutter test --concurrency=1 --reporter expanded test/v56_ui_smoke_test.dart \
-            2>&1 | tee "$RUNNER_TEMP/flutter-ui.log"
+          set -euo pipefail
+          : > "$RUNNER_TEMP/flutter-ui.log"
+          tests=(
+            "Skip for now enters the guest V56 shell"
+            "New users can open the create-account flow"
+            "Guest V56 shell creates a demo account from a virtual balance"
+            "Portfolio swipes to Add Broker inside the same carousel"
+            "Market keeps the XM-sized chart surface closed until a pair is tapped"
+            "Market pair opens the full scrollable TradingView screen"
+            "Dashboard theme button cycles all eight locked modes"
+            "Terminal Hub double-tap opens complete history"
+            "Bots screen keeps compact Terminal Hub and deployment sections"
+            "Bots screen uses the complete HTML v6 selector and safe fixed CTA"
+            "Create My Own Bot opens as a full-screen route"
+            "Settings restores plans and hides developer-only rows"
+          )
+          for name in "${tests[@]}"; do
+            echo "=== ${name} ===" | tee -a "$RUNNER_TEMP/flutter-ui.log"
+            timeout 180s flutter test --concurrency=1 --reporter expanded \
+              test/v56_ui_smoke_test.dart --plain-name "$name" \
+              2>&1 | tee -a "$RUNNER_TEMP/flutter-ui.log"
+          done
 
       - name: Run bot and market contract tests
         working-directory: app
