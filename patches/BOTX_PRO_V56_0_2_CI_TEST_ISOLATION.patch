@@ -1,0 +1,32 @@
+--- a/test/v56_ui_smoke_test.dart
++++ b/test/v56_ui_smoke_test.dart
+@@ -145,23 +145,12 @@
+   ) async {
+     SharedPreferences.setMockInitialValues(const {});
+     FlutterSecureStorage.setMockInitialValues(const {});
+-    final appController = V16AppController(
+-      config: offlineConfig,
+-      guestMode: true,
+-    );
+-    final themeController = V56ThemeController();
+-    await tester.runAsync(() => appController.initialize());
+-    await tester.pumpWidget(
+-      MaterialApp(
+-        debugShowCheckedModeBanner: false,
+-        theme: themeController.theme,
+-        home: _OwnedGuestShell(
+-          controller: appController,
+-          themeController: themeController,
+-        ),
+-      ),
+-    );
+-    await tester.pump();
++    await tester.pumpWidget(BotXApp(config: offlineConfig));
++    final skip = find.byKey(const ValueKey('v56_login_skip'));
++    await pumpUntil(tester, skip);
++    expect(skip, findsOneWidget);
++    await tester.tap(skip);
++    await pumpUntil(tester, find.byKey(const ValueKey('v56_demo_setup')));
+ 
+     expect(find.byKey(const ValueKey('v56_demo_setup')), findsOneWidget);
+     expect(find.text('Create Demo Account'), findsOneWidget);
