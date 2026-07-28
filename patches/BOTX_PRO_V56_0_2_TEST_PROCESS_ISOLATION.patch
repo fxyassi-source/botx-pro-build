@@ -120,11 +120,18 @@
      expect(controller.selectedTimeframe, '15m');
    });
  
-@@ -281,7 +266,12 @@
+@@ -279,9 +264,17 @@
+   ) async {
+     await pumpGuestShell(tester, size: const Size(320, 640));
      await tester.tap(find.byKey(const ValueKey('v56_nav_market')));
-     await tester.pump(const Duration(milliseconds: 250));
-     await tester.tap(find.byKey(const ValueKey('v56_market_pair_EURUSD')));
+-    await tester.pump(const Duration(milliseconds: 250));
+-    await tester.tap(find.byKey(const ValueKey('v56_market_pair_EURUSD')));
 -    await tester.pump(const Duration(milliseconds: 500));
++    final compactPair =
++        find.byKey(const ValueKey('v56_market_pair_EURUSD'));
++    await pumpUntil(tester, compactPair, attempts: 80);
++    expect(compactPair, findsOneWidget);
++    await tester.tap(compactPair);
 +    await pumpUntil(
 +      tester,
 +      find.byKey(const ValueKey('v56_tradingview_fullscreen')),
@@ -134,11 +141,17 @@
  
      final chart = find.byKey(const ValueKey('v56_market_chart'));
      expect(tester.getRect(chart).left, 0);
-@@ -310,7 +300,12 @@
+@@ -308,9 +301,16 @@
+   ) async {
+     await pumpGuestShell(tester, size: const Size(600, 960));
      await tester.tap(find.byKey(const ValueKey('v56_nav_market')));
-     await tester.pump(const Duration(milliseconds: 250));
-     await tester.tap(find.byKey(const ValueKey('v56_market_pair_EURUSD')));
+-    await tester.pump(const Duration(milliseconds: 250));
+-    await tester.tap(find.byKey(const ValueKey('v56_market_pair_EURUSD')));
 -    await tester.pump(const Duration(milliseconds: 500));
++    final largePair = find.byKey(const ValueKey('v56_market_pair_EURUSD'));
++    await pumpUntil(tester, largePair, attempts: 80);
++    expect(largePair, findsOneWidget);
++    await tester.tap(largePair);
 +    await pumpUntil(
 +      tester,
 +      find.byKey(const ValueKey('v56_tradingview_fullscreen')),
