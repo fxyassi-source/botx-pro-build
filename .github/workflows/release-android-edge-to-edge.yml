@@ -9,6 +9,7 @@ on:
       - 'patches/BOTX_PRO_V56_0_2_EDGE_TO_EDGE.patch.gz.b64'
       - 'patches/BOTX_PRO_V56_0_2_CI_TEST_ISOLATION.patch'
       - 'patches/BOTX_PRO_V56_0_2_FINAL_GATE_FIX.patch'
+      - 'patches/BOTX_PRO_V56_0_2_TEST_PROCESS_ISOLATION.patch'
       - '.github/workflows/release-android-edge-to-edge.yml'
   workflow_dispatch:
 
@@ -32,6 +33,7 @@ jobs:
       EDGE_PATCH_SHA256: 8bc323faadb1cee61685f024cd8ff4937c52aa845c41219a7b27cde71a5217e5
       TEST_ISOLATION_SHA256: ae1c6b2bb3fb13ae9b12fcc53a1c109999ec31821fc9962a0c3d81483bebe865
       FINAL_GATE_FIX_SHA256: f8404cc00fe967affd95c130e23b5e8baa7328685f6b6a9836bae248ba91e7ae
+      TEST_PROCESS_ISOLATION_SHA256: 50207b9348902c3746518e3e2bdc0a90915f21f2566b4063003a250e24e7140a
       SIGNING_TAG: botx-android-signing-v1
 
     steps:
@@ -82,6 +84,10 @@ jobs:
             | sha256sum --check --strict
           patch -p1 -d app < patches/BOTX_PRO_V56_0_2_FINAL_GATE_FIX.patch
 
+          echo "${TEST_PROCESS_ISOLATION_SHA256}  patches/BOTX_PRO_V56_0_2_TEST_PROCESS_ISOLATION.patch" \
+            | sha256sum --check --strict
+          patch -p1 -d app < patches/BOTX_PRO_V56_0_2_TEST_PROCESS_ISOLATION.patch
+
           sha256sum --check --strict protected-lib.sha256
           grep -q '^version: 56.0.2+5602$' app/pubspec.yaml
 
@@ -113,6 +119,7 @@ jobs:
             lib/app/v56_native_shell.dart \
             lib/features/market/trading_view_chart.dart \
             test/v56_ui_smoke_test.dart \
+            test/v56_demo_setup_flow_test.dart \
             test/v56_visual_capture_test.dart \
             test/trading_view_widget_contract_test.dart
 
@@ -138,6 +145,11 @@ jobs:
             --reporter expanded \
             test/v56_visual_capture_test.dart 2>&1 | tee ../golden-baseline.log
 
+          timeout 3m flutter test \
+            --concurrency=1 \
+            --reporter expanded \
+            test/v56_demo_setup_flow_test.dart 2>&1 | tee ../demo-setup-flow.log
+
           timeout 15m flutter test \
             --concurrency=1 \
             --reporter expanded 2>&1 | tee ../tests.log
@@ -153,6 +165,7 @@ jobs:
           grep -q 'Market News' lib/app/v56_native_shell.dart
           grep -q '"hide_side_toolbar":false' test/trading_view_widget_contract_test.dart
           grep -q 'extendBodyBehindAppBar: false' lib/app/v56_native_shell.dart
+          grep -q 'Guest V56 shell creates a demo account' test/v56_demo_setup_flow_test.dart
           grep -q 'Create My Own Bot.*findsNothing' test/v56_ui_smoke_test.dart
           test "$(grep -c 'Chart by TradingView' lib/features/market/trading_view_chart.dart)" -eq 1
 
@@ -163,7 +176,7 @@ jobs:
         run: |
           set -o pipefail
           timeout 30m flutter build apk --release \
-            --build-name=56.0.2 --build-number=5605 \
+            --build-name=56.0.2 --build-number=5606 \
             --dart-define=BOTX_ENV=release-candidate \
             --dart-define=ALLOW_LIVE_MODE=false 2>&1 | tee ../build-release.log
 
@@ -182,11 +195,11 @@ jobs:
             && test "${{ steps.analyze.outcome }}" = success \
             && test "${{ steps.tests.outcome }}" = success \
             && test "${{ steps.build.outcome }}" = success; then
-            cp "${APK}" dist/BotXPro-V56.0.2-EdgeToEdge-Build5605.apk
+            cp "${APK}" dist/BotXPro-V56.0.2-EdgeToEdge-Build5606.apk
           fi
           cat > app/EDGE_TO_EDGE_COMPLETION_REPORT.md <<EOF
           # BotX Pro V56.0.2 Edge-to-Edge UI Patch
-          - Android build code: 5605
+          - Android build code: 5606
           - Analyze: ${{ steps.analyze.outcome }}
           - Complete Flutter tests: ${{ steps.tests.outcome }}
           - Signed APK build: ${{ steps.build.outcome }}
@@ -198,8 +211,8 @@ jobs:
           rm -f app/android/app/botx-release.jks app/android/key.properties
           zip -qr dist/BotXPro-V56.0.2-EdgeToEdge-Source.zip app \
             -x 'app/build/*' 'app/.dart_tool/*' 'app/*.apk' 'app/*.aab'
-          cp analyze.log golden-baseline.log tests.log build-release.log \
-            apk-signature-verification.txt dist/ 2>/dev/null || true
+          cp analyze.log golden-baseline.log demo-setup-flow.log tests.log \
+            build-release.log apk-signature-verification.txt dist/ 2>/dev/null || true
           (cd dist && find . -maxdepth 1 -type f \
             \( -name '*.apk' -o -name '*.zip' \) -print0 \
             | sort -z | xargs -0 -r sha256sum > SHA256SUMS.txt)
@@ -208,7 +221,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: BotX-Pro-V56.0.2-EdgeToEdge-Delivery-Build5605
+          name: BotX-Pro-V56.0.2-EdgeToEdge-Delivery-Build5606
           path: dist/
           if-no-files-found: error
           retention-days: 30
@@ -220,4 +233,4 @@ jobs:
           test "${{ steps.tests.outcome }}" = success
           test "${{ steps.build.outcome }}" = success
           test "${{ steps.package.outcome }}" = success
-          test -s dist/BotXPro-V56.0.2-EdgeToEdge-Build5605.apk
+          test -s dist/BotXPro-V56.0.2-EdgeToEdge-Build5606.apk
