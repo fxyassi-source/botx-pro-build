@@ -33,7 +33,7 @@ jobs:
       EDGE_PATCH_SHA256: 8bc323faadb1cee61685f024cd8ff4937c52aa845c41219a7b27cde71a5217e5
       TEST_ISOLATION_SHA256: ae1c6b2bb3fb13ae9b12fcc53a1c109999ec31821fc9962a0c3d81483bebe865
       FINAL_GATE_FIX_SHA256: f8404cc00fe967affd95c130e23b5e8baa7328685f6b6a9836bae248ba91e7ae
-      TEST_PROCESS_ISOLATION_SHA256: f3f8611d77480277c76e633a49d33e5ba27be269f035b380fd0e306977d69676
+      TEST_PROCESS_ISOLATION_SHA256: 15856007c28d64b88e6f7e33ac2892c277950ef890799e358d4e0bf6f9e7ae6c
       SIGNING_TAG: botx-android-signing-v1
 
     steps:
@@ -221,7 +221,7 @@ jobs:
         run: |
           set -o pipefail
           timeout 30m flutter build apk --release \
-            --build-name=56.0.2 --build-number=5610 \
+            --build-name=56.0.2 --build-number=5611 \
             --dart-define=BOTX_ENV=release-candidate \
             --dart-define=ALLOW_LIVE_MODE=false 2>&1 | tee ../build-release.log
 
@@ -240,11 +240,11 @@ jobs:
             && test "${{ steps.analyze.outcome }}" = success \
             && test "${{ steps.tests.outcome }}" = success \
             && test "${{ steps.build.outcome }}" = success; then
-            cp "${APK}" dist/BotXPro-V56.0.2-EdgeToEdge-Build5610.apk
+            cp "${APK}" dist/BotXPro-V56.0.2-EdgeToEdge-Build5611.apk
           fi
           cat > app/EDGE_TO_EDGE_COMPLETION_REPORT.md <<EOF
           # BotX Pro V56.0.2 Edge-to-Edge UI Patch
-          - Android build code: 5610
+          - Android build code: 5611
           - Analyze: ${{ steps.analyze.outcome }}
           - Complete Flutter tests: ${{ steps.tests.outcome }}
           - Signed APK build: ${{ steps.build.outcome }}
@@ -266,7 +266,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: BotX-Pro-V56.0.2-EdgeToEdge-Delivery-Build5610
+          name: BotX-Pro-V56.0.2-EdgeToEdge-Delivery-Build5611
           path: dist/
           if-no-files-found: error
           retention-days: 30
@@ -278,4 +278,4 @@ jobs:
           test "${{ steps.tests.outcome }}" = success
           test "${{ steps.build.outcome }}" = success
           test "${{ steps.package.outcome }}" = success
-          test -s dist/BotXPro-V56.0.2-EdgeToEdge-Build5610.apk
+          test -s dist/BotXPro-V56.0.2-EdgeToEdge-Build5611.apk
