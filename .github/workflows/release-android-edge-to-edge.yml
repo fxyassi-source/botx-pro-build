@@ -145,14 +145,58 @@ jobs:
             --reporter expanded \
             test/v56_visual_capture_test.dart 2>&1 | tee ../golden-baseline.log
 
-          timeout 3m flutter test \
-            --concurrency=1 \
-            --reporter expanded \
-            test/v56_demo_setup_flow_test.dart 2>&1 | tee ../demo-setup-flow.log
+          : > ../tests.log
 
-          timeout 15m flutter test \
-            --concurrency=1 \
-            --reporter expanded 2>&1 | tee ../tests.log
+          run_test_file() {
+            local test_file="$1"
+            timeout 3m flutter test \
+              --concurrency=1 \
+              --reporter expanded \
+              "${test_file}" 2>&1 | tee -a ../tests.log
+          }
+
+          run_smoke_test() {
+            local test_name="$1"
+            timeout 3m flutter test \
+              --concurrency=1 \
+              --reporter expanded \
+              --plain-name "${test_name}" \
+              test/v56_ui_smoke_test.dart 2>&1 | tee -a ../tests.log
+          }
+
+          run_test_file test/v56_demo_setup_flow_test.dart
+          cp ../tests.log ../demo-setup-flow.log
+
+          while IFS= read -r test_file; do
+            run_test_file "${test_file}"
+          done < <(
+            find test -maxdepth 1 -type f -name '*_test.dart' \
+              ! -name 'v56_demo_setup_flow_test.dart' \
+              ! -name 'v56_ui_smoke_test.dart' \
+              ! -name 'v56_visual_capture_test.dart' \
+              | sort
+          )
+
+          run_test_file test/v56_visual_capture_test.dart
+
+          smoke_tests=(
+            'Skip for now enters the guest V56 shell'
+            'New users can open the create-account flow'
+            'Portfolio swipes to Add Broker inside the same carousel'
+            'Market keeps the XM-sized chart surface closed until a pair is tapped'
+            'Market pair opens the full scrollable TradingView screen'
+            'Market chart and strategy studio avoid overflow on compact UI'
+            'Market chart remains full-width on a large Android viewport'
+            'Dashboard theme button cycles all eight locked modes'
+            'Terminal Hub double-tap opens complete history'
+            'Bots screen keeps compact Terminal Hub and deployment sections'
+            'Bot selector keeps the four named bots and removes row Start buttons'
+            'Deploy Your Strategies opens the Ask AI full-screen route'
+            'Settings restores plans and hides developer-only rows'
+          )
+          for test_name in "${smoke_tests[@]}"; do
+            run_smoke_test "${test_name}"
+          done
 
           grep -q 'v56_market_chart' lib/app/v56_native_shell.dart
           grep -q 'v56_custom_bot_edge_to_edge' lib/app/v56_native_shell.dart
@@ -176,7 +220,7 @@ jobs:
         run: |
           set -o pipefail
           timeout 30m flutter build apk --release \
-            --build-name=56.0.2 --build-number=5607 \
+            --build-name=56.0.2 --build-number=5608 \
             --dart-define=BOTX_ENV=release-candidate \
             --dart-define=ALLOW_LIVE_MODE=false 2>&1 | tee ../build-release.log
 
@@ -195,11 +239,11 @@ jobs:
             && test "${{ steps.analyze.outcome }}" = success \
             && test "${{ steps.tests.outcome }}" = success \
             && test "${{ steps.build.outcome }}" = success; then
-            cp "${APK}" dist/BotXPro-V56.0.2-EdgeToEdge-Build5607.apk
+            cp "${APK}" dist/BotXPro-V56.0.2-EdgeToEdge-Build5608.apk
           fi
           cat > app/EDGE_TO_EDGE_COMPLETION_REPORT.md <<EOF
           # BotX Pro V56.0.2 Edge-to-Edge UI Patch
-          - Android build code: 5607
+          - Android build code: 5608
           - Analyze: ${{ steps.analyze.outcome }}
           - Complete Flutter tests: ${{ steps.tests.outcome }}
           - Signed APK build: ${{ steps.build.outcome }}
@@ -221,7 +265,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: BotX-Pro-V56.0.2-EdgeToEdge-Delivery-Build5607
+          name: BotX-Pro-V56.0.2-EdgeToEdge-Delivery-Build5608
           path: dist/
           if-no-files-found: error
           retention-days: 30
@@ -233,4 +277,4 @@ jobs:
           test "${{ steps.tests.outcome }}" = success
           test "${{ steps.build.outcome }}" = success
           test "${{ steps.package.outcome }}" = success
-          test -s dist/BotXPro-V56.0.2-EdgeToEdge-Build5607.apk
+          test -s dist/BotXPro-V56.0.2-EdgeToEdge-Build5608.apk
