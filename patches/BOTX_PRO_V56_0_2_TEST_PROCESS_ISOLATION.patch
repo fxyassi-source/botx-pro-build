@@ -1,6 +1,14 @@
 --- a/test/v56_ui_smoke_test.dart
 +++ b/test/v56_ui_smoke_test.dart
-@@ -140,38 +140,6 @@
+@@ -4,6 +4,7 @@
+ import 'package:botx_pro_v16/core/config/app_config.dart';
+ import 'package:botx_pro_v16/core/theme/v56_theme.dart';
+ import 'package:flutter/material.dart';
++import 'package:flutter/services.dart';
+ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+ import 'package:flutter_test/flutter_test.dart';
+ import 'package:shared_preferences/shared_preferences.dart';
+@@ -140,38 +141,6 @@
      );
    });
  
@@ -39,7 +47,7 @@
    testWidgets('Portfolio swipes to Add Broker inside the same carousel', (
      tester,
    ) async {
-@@ -215,12 +183,12 @@
+@@ -215,12 +184,12 @@
  
      expect(find.byKey(const ValueKey('v56_market_chart')), findsNothing);
      await tester.tap(find.byKey(const ValueKey('v56_market_pair_EURUSD')));
@@ -57,7 +65,21 @@
      final chart = find.byKey(const ValueKey('v56_market_chart'));
      expect(chart, findsOneWidget);
      final chartRect = tester.getRect(chart);
-@@ -247,11 +215,11 @@
+@@ -244,14 +213,25 @@
+     await tester.pump(const Duration(milliseconds: 250));
+     expect(controller.selectedTimeframe, '15m');
+ 
++    final platformCalls = <String>[];
++    final messenger =
++        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
++    messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
++      platformCalls.add(call.method);
++      return null;
++    });
++    addTearDown(
++      () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
++    );
++
      await tester.tap(
        find.byKey(const ValueKey('v56_chart_fullscreen_button')),
      );
@@ -74,22 +96,31 @@
      final fullscreenSurface =
          find.byKey(const ValueKey('v56_chart_only_surface'));
      expect(fullscreenSurface, findsOneWidget);
-@@ -266,11 +234,9 @@
+@@ -264,13 +244,18 @@
+       greaterThanOrEqualTo(tester.getBottomLeft(fullscreenAppBar).dy),
+     );
      expect(find.text('EURUSD · 15m'), findsOneWidget);
- 
-     await tester.pageBack();
+-
+-    await tester.pageBack();
 -    await tester.pump(const Duration(milliseconds: 500));
--    expect(
+     expect(
 -      find.byKey(const ValueKey('v56_tradingview_fullscreen')),
 -      findsOneWidget,
--    );
++      platformCalls,
++      containsAll(const [
++        'SystemChrome.setPreferredOrientations',
++        'SystemChrome.setEnabledSystemUIMode',
++      ]),
+     );
++
++    await tester.pageBack();
 +    await pumpUntil(tester, marketRoute, attempts: 80);
 +    await tester.pump(const Duration(milliseconds: 400));
 +    expect(marketRoute, findsOneWidget);
      expect(controller.selectedTimeframe, '15m');
    });
  
-@@ -281,7 +247,12 @@
+@@ -281,7 +266,12 @@
      await tester.tap(find.byKey(const ValueKey('v56_nav_market')));
      await tester.pump(const Duration(milliseconds: 250));
      await tester.tap(find.byKey(const ValueKey('v56_market_pair_EURUSD')));
@@ -103,7 +134,7 @@
  
      final chart = find.byKey(const ValueKey('v56_market_chart'));
      expect(tester.getRect(chart).left, 0);
-@@ -310,7 +281,12 @@
+@@ -310,7 +300,12 @@
      await tester.tap(find.byKey(const ValueKey('v56_nav_market')));
      await tester.pump(const Duration(milliseconds: 250));
      await tester.tap(find.byKey(const ValueKey('v56_market_pair_EURUSD')));
