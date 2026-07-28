@@ -1,0 +1,114 @@
+--- a/test/v56_ui_smoke_test.dart
++++ b/test/v56_ui_smoke_test.dart
+@@ -140,38 +140,6 @@
+     );
+   });
+ 
+-  testWidgets('Guest V56 shell creates a demo account from a virtual balance', (
+-    tester,
+-  ) async {
+-    SharedPreferences.setMockInitialValues(const {});
+-    FlutterSecureStorage.setMockInitialValues(const {});
+-    await tester.pumpWidget(BotXApp(config: offlineConfig));
+-    final skip = find.byKey(const ValueKey('v56_login_skip'));
+-    await pumpUntil(tester, skip);
+-    expect(skip, findsOneWidget);
+-    await tester.tap(skip);
+-    await tester.pump();
+-
+-    final guestShell = find.byType(V56NativeShell);
+-    await pumpUntil(tester, guestShell);
+-    expect(guestShell, findsOneWidget);
+-
+-    final controller = tester.widget<V56NativeShell>(guestShell).controller;
+-    await tester.runAsync(controller.initialize);
+-    await tester.pump();
+-
+-    final demoSetup = find.byKey(const ValueKey('v56_demo_setup'));
+-    await pumpUntil(tester, demoSetup);
+-
+-    expect(demoSetup, findsOneWidget);
+-    expect(find.text('Create Demo Account'), findsOneWidget);
+-    final startDemo = find.byKey(const ValueKey('v56_start_demo_trading'));
+-    expect(startDemo, findsOneWidget);
+-    expect(tester.widget<FilledButton>(startDemo).onPressed, isNotNull);
+-    expect(find.byKey(const ValueKey('v56_demo_amount')), findsOneWidget);
+-    expect(find.textContaining('all five BotX bots'), findsOneWidget);
+-  });
+-
+   testWidgets('Portfolio swipes to Add Broker inside the same carousel', (
+     tester,
+   ) async {
+--- /dev/null
++++ b/test/v56_demo_setup_flow_test.dart
+@@ -0,0 +1,70 @@
++import 'package:botx_pro_v16/app/botx_app.dart';
++import 'package:botx_pro_v16/app/v56_native_shell.dart';
++import 'package:botx_pro_v16/core/config/app_config.dart';
++import 'package:flutter/material.dart';
++import 'package:flutter_secure_storage/flutter_secure_storage.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++
++final demoFlowConfig = AppConfig(
++  apiBaseUrl: Uri(scheme: 'http', host: '127.0.0.1', port: 8080),
++  wsBaseUrl: Uri(
++    scheme: 'ws',
++    host: '127.0.0.1',
++    port: 8080,
++    path: '/realtime',
++  ),
++  environment: 'offline-demo',
++  commandTimeout: const Duration(seconds: 25),
++  backendConfigured: false,
++);
++
++Future<void> pumpUntil(
++  WidgetTester tester,
++  Finder finder, {
++  int attempts = 40,
++  Duration step = const Duration(milliseconds: 100),
++}) async {
++  for (var attempt = 0;
++      attempt < attempts && finder.evaluate().isEmpty;
++      attempt++) {
++    await tester.pump(step);
++  }
++}
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++
++  testWidgets('Guest V56 shell creates a demo account from a virtual balance', (
++    tester,
++  ) async {
++    SharedPreferences.setMockInitialValues(const {});
++    FlutterSecureStorage.setMockInitialValues(const {});
++    await tester.pumpWidget(BotXApp(config: demoFlowConfig));
++
++    final skip = find.byKey(const ValueKey('v56_login_skip'));
++    await pumpUntil(tester, skip);
++    expect(skip, findsOneWidget);
++    await tester.tap(skip);
++    await tester.pump();
++
++    final guestShell = find.byType(V56NativeShell);
++    await pumpUntil(tester, guestShell);
++    expect(guestShell, findsOneWidget);
++
++    final controller = tester.widget<V56NativeShell>(guestShell).controller;
++    await tester.runAsync(controller.initialize);
++    await tester.pump();
++
++    final demoSetup = find.byKey(const ValueKey('v56_demo_setup'));
++    await pumpUntil(tester, demoSetup);
++    expect(demoSetup, findsOneWidget);
++    expect(find.text('Create Demo Account'), findsOneWidget);
++
++    final startDemo = find.byKey(const ValueKey('v56_start_demo_trading'));
++    expect(startDemo, findsOneWidget);
++    expect(tester.widget<FilledButton>(startDemo).onPressed, isNotNull);
++    expect(find.byKey(const ValueKey('v56_demo_amount')), findsOneWidget);
++    expect(find.textContaining('all five BotX bots'), findsOneWidget);
++  });
++}
