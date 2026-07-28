@@ -41,12 +41,12 @@
    ) async {
 --- /dev/null
 +++ b/test/v56_demo_setup_flow_test.dart
-@@ -0,0 +1,70 @@
-+import 'package:botx_pro_v16/app/botx_app.dart';
+@@ -0,0 +1,62 @@
++import 'package:botx_pro_v16/app/v16_app_controller.dart';
 +import 'package:botx_pro_v16/app/v56_native_shell.dart';
 +import 'package:botx_pro_v16/core/config/app_config.dart';
++import 'package:botx_pro_v16/core/theme/v56_theme.dart';
 +import 'package:flutter/material.dart';
-+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 +import 'package:flutter_test/flutter_test.dart';
 +import 'package:shared_preferences/shared_preferences.dart';
 +
@@ -63,19 +63,6 @@
 +  backendConfigured: false,
 +);
 +
-+Future<void> pumpUntil(
-+  WidgetTester tester,
-+  Finder finder, {
-+  int attempts = 40,
-+  Duration step = const Duration(milliseconds: 100),
-+}) async {
-+  for (var attempt = 0;
-+      attempt < attempts && finder.evaluate().isEmpty;
-+      attempt++) {
-+    await tester.pump(step);
-+  }
-+}
-+
 +void main() {
 +  TestWidgetsFlutterBinding.ensureInitialized();
 +
@@ -83,25 +70,30 @@
 +    tester,
 +  ) async {
 +    SharedPreferences.setMockInitialValues(const {});
-+    FlutterSecureStorage.setMockInitialValues(const {});
-+    await tester.pumpWidget(BotXApp(config: demoFlowConfig));
++    final controller = V16AppController(
++      config: demoFlowConfig,
++      guestMode: true,
++    );
++    final themes = V56ThemeController();
++    addTearDown(controller.dispose);
++    addTearDown(themes.dispose);
 +
-+    final skip = find.byKey(const ValueKey('v56_login_skip'));
-+    await pumpUntil(tester, skip);
-+    expect(skip, findsOneWidget);
-+    await tester.tap(skip);
-+    await tester.pump();
++    await tester.runAsync(() => controller.initialize());
++    expect(controller.localDemoActive, isFalse);
 +
-+    final guestShell = find.byType(V56NativeShell);
-+    await pumpUntil(tester, guestShell);
-+    expect(guestShell, findsOneWidget);
-+
-+    final controller = tester.widget<V56NativeShell>(guestShell).controller;
-+    await tester.runAsync(controller.initialize);
++    await tester.pumpWidget(
++      MaterialApp(
++        debugShowCheckedModeBanner: false,
++        theme: themes.theme,
++        home: V56NativeShell(
++          controller: controller,
++          themeController: themes,
++        ),
++      ),
++    );
 +    await tester.pump();
 +
 +    final demoSetup = find.byKey(const ValueKey('v56_demo_setup'));
-+    await pumpUntil(tester, demoSetup);
 +    expect(demoSetup, findsOneWidget);
 +    expect(find.text('Create Demo Account'), findsOneWidget);
 +
