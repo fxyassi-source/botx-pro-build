@@ -39,6 +39,79 @@
    testWidgets('Portfolio swipes to Add Broker inside the same carousel', (
      tester,
    ) async {
+@@ -215,12 +183,11 @@
+ 
+     expect(find.byKey(const ValueKey('v56_market_chart')), findsNothing);
+     await tester.tap(find.byKey(const ValueKey('v56_market_pair_EURUSD')));
+-    await tester.pump(const Duration(milliseconds: 500));
++    final marketRoute =
++        find.byKey(const ValueKey('v56_tradingview_fullscreen'));
++    await pumpUntil(tester, marketRoute, attempts: 80);
+ 
+-    expect(
+-      find.byKey(const ValueKey('v56_tradingview_fullscreen')),
+-      findsOneWidget,
+-    );
++    expect(marketRoute, findsOneWidget);
+     final chart = find.byKey(const ValueKey('v56_market_chart'));
+     expect(chart, findsOneWidget);
+     final chartRect = tester.getRect(chart);
+@@ -247,11 +214,10 @@
+     await tester.tap(
+       find.byKey(const ValueKey('v56_chart_fullscreen_button')),
+     );
+-    await tester.pump(const Duration(milliseconds: 500));
+-    expect(
+-      find.byKey(const ValueKey('v56_chart_only_fullscreen')),
+-      findsOneWidget,
+-    );
++    final chartOnlyRoute =
++        find.byKey(const ValueKey('v56_chart_only_fullscreen'));
++    await pumpUntil(tester, chartOnlyRoute, attempts: 80);
++    expect(chartOnlyRoute, findsOneWidget);
+     final fullscreenSurface =
+         find.byKey(const ValueKey('v56_chart_only_surface'));
+     expect(fullscreenSurface, findsOneWidget);
+@@ -266,11 +232,8 @@
+     expect(find.text('EURUSD · 15m'), findsOneWidget);
+ 
+     await tester.pageBack();
+-    await tester.pump(const Duration(milliseconds: 500));
+-    expect(
+-      find.byKey(const ValueKey('v56_tradingview_fullscreen')),
+-      findsOneWidget,
+-    );
++    await pumpUntil(tester, marketRoute, attempts: 80);
++    expect(marketRoute, findsOneWidget);
+     expect(controller.selectedTimeframe, '15m');
+   });
+ 
+@@ -281,7 +244,11 @@
+     await tester.tap(find.byKey(const ValueKey('v56_nav_market')));
+     await tester.pump(const Duration(milliseconds: 250));
+     await tester.tap(find.byKey(const ValueKey('v56_market_pair_EURUSD')));
+-    await tester.pump(const Duration(milliseconds: 500));
++    await pumpUntil(
++      tester,
++      find.byKey(const ValueKey('v56_tradingview_fullscreen')),
++      attempts: 80,
++    );
+ 
+     final chart = find.byKey(const ValueKey('v56_market_chart'));
+     expect(tester.getRect(chart).left, 0);
+@@ -310,7 +277,11 @@
+     await tester.tap(find.byKey(const ValueKey('v56_nav_market')));
+     await tester.pump(const Duration(milliseconds: 250));
+     await tester.tap(find.byKey(const ValueKey('v56_market_pair_EURUSD')));
+-    await tester.pump(const Duration(milliseconds: 500));
++    await pumpUntil(
++      tester,
++      find.byKey(const ValueKey('v56_tradingview_fullscreen')),
++      attempts: 80,
++    );
+ 
+     final chart = find.byKey(const ValueKey('v56_market_chart'));
+     expect(tester.getRect(chart).left, 0);
 --- /dev/null
 +++ b/test/v56_demo_setup_flow_test.dart
 @@ -0,0 +1,62 @@
