@@ -674,7 +674,7 @@ index 0000000..0896ec4
 +  });
 +}
 diff --git a/test/v56_ui_smoke_test.dart b/test/v56_ui_smoke_test.dart
-index 7c4bc24..04271af 100644
+index 7c4bc24..b6ef3d1 100644
 --- a/test/v56_ui_smoke_test.dart
 +++ b/test/v56_ui_smoke_test.dart
 @@ -203,6 +203,9 @@ void main() {
@@ -687,7 +687,7 @@ index 7c4bc24..04271af 100644
      expect(
        find.byKey(const ValueKey('v56_chart_fullscreen_button')),
        findsOneWidget,
-@@ -262,8 +265,14 @@ void main() {
+@@ -262,11 +265,22 @@ void main() {
    testWidgets('Market chart and strategy studio avoid overflow on compact UI', (
      tester,
    ) async {
@@ -703,22 +703,46 @@ index 7c4bc24..04271af 100644
 +    await tester.pump();
      final compactPair =
          find.byKey(const ValueKey('v56_market_pair_EURUSD'));
-     await pumpUntil(tester, compactPair, attempts: 80);
-@@ -281,10 +290,10 @@ void main() {
+-    await pumpUntil(tester, compactPair, attempts: 80);
++    await tester.scrollUntilVisible(
++      compactPair,
++      220,
++      scrollable: find.byKey(const PageStorageKey('market')),
++      maxScrolls: 8,
++    );
+     expect(compactPair, findsOneWidget);
+     await tester.tap(compactPair);
+     await pumpUntil(
+@@ -281,16 +295,22 @@ void main() {
      expect(tester.getSize(chart).width, 320);
      expect(tester.takeException(), isNull);
  
 -    await tester.pageBack();
--    await tester.pump(const Duration(milliseconds: 250));
--    await tester.tap(find.byKey(const ValueKey('v56_nav_bots')));
 +    await tester.tap(find.byTooltip('Back'));
      await tester.pump(const Duration(milliseconds: 250));
+-    await tester.tap(find.byKey(const ValueKey('v56_nav_bots')));
+-    await tester.pump(const Duration(milliseconds: 250));
+-    await tester.tap(
+-      find.byKey(const ValueKey('v56_deploy_your_strategies')),
 +    controller.selectTab(2);
 +    await tester.pump();
-     await tester.tap(
-       find.byKey(const ValueKey('v56_deploy_your_strategies')),
++    final compactDeploy =
++        find.byKey(const ValueKey('v56_deploy_your_strategies'));
++    await tester.scrollUntilVisible(
++      compactDeploy,
++      180,
++      scrollable: find.byKey(const PageStorageKey('bots')),
++      maxScrolls: 6,
      );
-@@ -299,8 +308,12 @@ void main() {
+-    await tester.pump(const Duration(milliseconds: 500));
++    await tester.tap(compactDeploy);
+ 
+     final studio = find.byKey(const ValueKey('v56_custom_bot_edge_to_edge'));
++    await pumpUntil(tester, studio, attempts: 80);
+     expect(tester.getRect(studio).left, 0);
+     expect(tester.getSize(studio).width, 320);
+     expect(tester.takeException(), isNull);
+@@ -299,8 +319,12 @@ void main() {
    testWidgets('Market chart remains full-width on a large Android viewport', (
      tester,
    ) async {
@@ -733,3 +757,20 @@ index 7c4bc24..04271af 100644
      final largePair = find.byKey(const ValueKey('v56_market_pair_EURUSD'));
      await pumpUntil(tester, largePair, attempts: 80);
      expect(largePair, findsOneWidget);
+@@ -407,12 +431,11 @@ void main() {
+     await tester.tap(
+       find.byKey(const ValueKey('v56_deploy_your_strategies')),
+     );
+-    await tester.pump(const Duration(milliseconds: 500));
+ 
+-    expect(
+-      find.byKey(const ValueKey('v56_custom_bot_fullscreen')),
+-      findsOneWidget,
+-    );
++    final fullScreen =
++        find.byKey(const ValueKey('v56_custom_bot_fullscreen'));
++    await pumpUntil(tester, fullScreen, attempts: 80);
++    expect(fullScreen, findsOneWidget);
+     final edgeToEdge =
+         find.byKey(const ValueKey('v56_custom_bot_edge_to_edge'));
+     expect(edgeToEdge, findsOneWidget);
