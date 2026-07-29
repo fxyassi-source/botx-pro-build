@@ -674,7 +674,7 @@ index 0000000..0896ec4
 +  });
 +}
 diff --git a/test/v56_ui_smoke_test.dart b/test/v56_ui_smoke_test.dart
-index 7c4bc24..b6ef3d1 100644
+index 7c4bc24..31db06d 100644
 --- a/test/v56_ui_smoke_test.dart
 +++ b/test/v56_ui_smoke_test.dart
 @@ -203,6 +203,9 @@ void main() {
@@ -687,7 +687,7 @@ index 7c4bc24..b6ef3d1 100644
      expect(
        find.byKey(const ValueKey('v56_chart_fullscreen_button')),
        findsOneWidget,
-@@ -262,11 +265,22 @@ void main() {
+@@ -262,11 +265,25 @@ void main() {
    testWidgets('Market chart and strategy studio avoid overflow on compact UI', (
      tester,
    ) async {
@@ -704,16 +704,19 @@ index 7c4bc24..b6ef3d1 100644
      final compactPair =
          find.byKey(const ValueKey('v56_market_pair_EURUSD'));
 -    await pumpUntil(tester, compactPair, attempts: 80);
++    final marketList = find.byKey(const PageStorageKey('market'));
 +    await tester.scrollUntilVisible(
 +      compactPair,
 +      220,
-+      scrollable: find.byKey(const PageStorageKey('market')),
++      scrollable: find
++          .descendant(of: marketList, matching: find.byType(Scrollable))
++          .first,
 +      maxScrolls: 8,
 +    );
      expect(compactPair, findsOneWidget);
      await tester.tap(compactPair);
      await pumpUntil(
-@@ -281,16 +295,22 @@ void main() {
+@@ -281,16 +298,26 @@ void main() {
      expect(tester.getSize(chart).width, 320);
      expect(tester.takeException(), isNull);
  
@@ -728,10 +731,13 @@ index 7c4bc24..b6ef3d1 100644
 +    await tester.pump();
 +    final compactDeploy =
 +        find.byKey(const ValueKey('v56_deploy_your_strategies'));
++    final botsList = find.byKey(const PageStorageKey('bots'));
 +    await tester.scrollUntilVisible(
 +      compactDeploy,
 +      180,
-+      scrollable: find.byKey(const PageStorageKey('bots')),
++      scrollable: find
++          .descendant(of: botsList, matching: find.byType(Scrollable))
++          .first,
 +      maxScrolls: 6,
      );
 -    await tester.pump(const Duration(milliseconds: 500));
@@ -739,10 +745,11 @@ index 7c4bc24..b6ef3d1 100644
  
      final studio = find.byKey(const ValueKey('v56_custom_bot_edge_to_edge'));
 +    await pumpUntil(tester, studio, attempts: 80);
++    await tester.pump(const Duration(milliseconds: 400));
      expect(tester.getRect(studio).left, 0);
      expect(tester.getSize(studio).width, 320);
      expect(tester.takeException(), isNull);
-@@ -299,8 +319,12 @@ void main() {
+@@ -299,8 +326,12 @@ void main() {
    testWidgets('Market chart remains full-width on a large Android viewport', (
      tester,
    ) async {
@@ -757,7 +764,7 @@ index 7c4bc24..b6ef3d1 100644
      final largePair = find.byKey(const ValueKey('v56_market_pair_EURUSD'));
      await pumpUntil(tester, largePair, attempts: 80);
      expect(largePair, findsOneWidget);
-@@ -407,12 +431,11 @@ void main() {
+@@ -407,12 +438,12 @@ void main() {
      await tester.tap(
        find.byKey(const ValueKey('v56_deploy_your_strategies')),
      );
@@ -770,6 +777,7 @@ index 7c4bc24..b6ef3d1 100644
 +    final fullScreen =
 +        find.byKey(const ValueKey('v56_custom_bot_fullscreen'));
 +    await pumpUntil(tester, fullScreen, attempts: 80);
++    await tester.pump(const Duration(milliseconds: 400));
 +    expect(fullScreen, findsOneWidget);
      final edgeToEdge =
          find.byKey(const ValueKey('v56_custom_bot_edge_to_edge'));
