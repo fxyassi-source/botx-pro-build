@@ -1,0 +1,228 @@
+--- a/test/v56_ui_smoke_test.dart
++++ b/test/v56_ui_smoke_test.dart
+@@ -4,6 +4,7 @@
+ import 'package:botx_pro_v16/core/config/app_config.dart';
+ import 'package:botx_pro_v16/core/theme/v56_theme.dart';
+ import 'package:flutter/material.dart';
++import 'package:flutter/services.dart';
+ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+ import 'package:flutter_test/flutter_test.dart';
+ import 'package:shared_preferences/shared_preferences.dart';
+@@ -140,38 +141,6 @@
+     );
+   });
+ 
+-  testWidgets('Guest V56 shell creates a demo account from a virtual balance', (
+-    tester,
+-  ) async {
+-    SharedPreferences.setMockInitialValues(const {});
+-    FlutterSecureStorage.setMockInitialValues(const {});
+-    await tester.pumpWidget(BotXApp(config: offlineConfig));
+-    final skip = find.byKey(const ValueKey('v56_login_skip'));
+-    await pumpUntil(tester, skip);
+-    expect(skip, findsOneWidget);
+-    await tester.tap(skip);
+-    await tester.pump();
+-
+-    final guestShell = find.byType(V56NativeShell);
+-    await pumpUntil(tester, guestShell);
+-    expect(guestShell, findsOneWidget);
+-
+-    final controller = tester.widget<V56NativeShell>(guestShell).controller;
+-    await tester.runAsync(controller.initialize);
+-    await tester.pump();
+-
+-    final demoSetup = find.byKey(const ValueKey('v56_demo_setup'));
+-    await pumpUntil(tester, demoSetup);
+-
+-    expect(demoSetup, findsOneWidget);
+-    expect(find.text('Create Demo Account'), findsOneWidget);
+-    final startDemo = find.byKey(const ValueKey('v56_start_demo_trading'));
+-    expect(startDemo, findsOneWidget);
+-    expect(tester.widget<FilledButton>(startDemo).onPressed, isNotNull);
+-    expect(find.byKey(const ValueKey('v56_demo_amount')), findsOneWidget);
+-    expect(find.textContaining('all five BotX bots'), findsOneWidget);
+-  });
+-
+   testWidgets('Portfolio swipes to Add Broker inside the same carousel', (
+     tester,
+   ) async {
+@@ -215,12 +184,12 @@
+ 
+     expect(find.byKey(const ValueKey('v56_market_chart')), findsNothing);
+     await tester.tap(find.byKey(const ValueKey('v56_market_pair_EURUSD')));
+-    await tester.pump(const Duration(milliseconds: 500));
++    final marketRoute =
++        find.byKey(const ValueKey('v56_tradingview_fullscreen'));
++    await pumpUntil(tester, marketRoute, attempts: 80);
++    await tester.pump(const Duration(milliseconds: 400));
+ 
+-    expect(
+-      find.byKey(const ValueKey('v56_tradingview_fullscreen')),
+-      findsOneWidget,
+-    );
++    expect(marketRoute, findsOneWidget);
+     final chart = find.byKey(const ValueKey('v56_market_chart'));
+     expect(chart, findsOneWidget);
+     final chartRect = tester.getRect(chart);
+@@ -244,14 +213,25 @@
+     await tester.pump(const Duration(milliseconds: 250));
+     expect(controller.selectedTimeframe, '15m');
+ 
++    final platformCalls = <String>[];
++    final messenger =
++        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
++    messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
++      platformCalls.add(call.method);
++      return null;
++    });
++    addTearDown(
++      () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
++    );
++
+     await tester.tap(
+       find.byKey(const ValueKey('v56_chart_fullscreen_button')),
+     );
+-    await tester.pump(const Duration(milliseconds: 500));
+-    expect(
+-      find.byKey(const ValueKey('v56_chart_only_fullscreen')),
+-      findsOneWidget,
+-    );
++    final chartOnlyRoute =
++        find.byKey(const ValueKey('v56_chart_only_fullscreen'));
++    await pumpUntil(tester, chartOnlyRoute, attempts: 80);
++    await tester.pump(const Duration(milliseconds: 400));
++    expect(chartOnlyRoute, findsOneWidget);
+     final fullscreenSurface =
+         find.byKey(const ValueKey('v56_chart_only_surface'));
+     expect(fullscreenSurface, findsOneWidget);
+@@ -264,13 +244,18 @@
+       greaterThanOrEqualTo(tester.getBottomLeft(fullscreenAppBar).dy),
+     );
+     expect(find.text('EURUSD · 15m'), findsOneWidget);
+-
+-    await tester.pageBack();
+-    await tester.pump(const Duration(milliseconds: 500));
+     expect(
+-      find.byKey(const ValueKey('v56_tradingview_fullscreen')),
+-      findsOneWidget,
++      platformCalls,
++      containsAll(const [
++        'SystemChrome.setPreferredOrientations',
++        'SystemChrome.setEnabledSystemUIMode',
++      ]),
+     );
++
++    await tester.tap(find.byTooltip('Close full-screen chart'));
++    await pumpUntil(tester, marketRoute, attempts: 80);
++    await tester.pump(const Duration(milliseconds: 400));
++    expect(marketRoute, findsOneWidget);
+     expect(controller.selectedTimeframe, '15m');
+   });
+ 
+@@ -279,9 +264,17 @@
+   ) async {
+     await pumpGuestShell(tester, size: const Size(320, 640));
+     await tester.tap(find.byKey(const ValueKey('v56_nav_market')));
+-    await tester.pump(const Duration(milliseconds: 250));
+-    await tester.tap(find.byKey(const ValueKey('v56_market_pair_EURUSD')));
+-    await tester.pump(const Duration(milliseconds: 500));
++    final compactPair =
++        find.byKey(const ValueKey('v56_market_pair_EURUSD'));
++    await pumpUntil(tester, compactPair, attempts: 80);
++    expect(compactPair, findsOneWidget);
++    await tester.tap(compactPair);
++    await pumpUntil(
++      tester,
++      find.byKey(const ValueKey('v56_tradingview_fullscreen')),
++      attempts: 80,
++    );
++    await tester.pump(const Duration(milliseconds: 400));
+ 
+     final chart = find.byKey(const ValueKey('v56_market_chart'));
+     expect(tester.getRect(chart).left, 0);
+@@ -308,9 +301,16 @@
+   ) async {
+     await pumpGuestShell(tester, size: const Size(600, 960));
+     await tester.tap(find.byKey(const ValueKey('v56_nav_market')));
+-    await tester.pump(const Duration(milliseconds: 250));
+-    await tester.tap(find.byKey(const ValueKey('v56_market_pair_EURUSD')));
+-    await tester.pump(const Duration(milliseconds: 500));
++    final largePair = find.byKey(const ValueKey('v56_market_pair_EURUSD'));
++    await pumpUntil(tester, largePair, attempts: 80);
++    expect(largePair, findsOneWidget);
++    await tester.tap(largePair);
++    await pumpUntil(
++      tester,
++      find.byKey(const ValueKey('v56_tradingview_fullscreen')),
++      attempts: 80,
++    );
++    await tester.pump(const Duration(milliseconds: 400));
+ 
+     final chart = find.byKey(const ValueKey('v56_market_chart'));
+     expect(tester.getRect(chart).left, 0);
+--- /dev/null
++++ b/test/v56_demo_setup_flow_test.dart
+@@ -0,0 +1,62 @@
++import 'package:botx_pro_v16/app/v16_app_controller.dart';
++import 'package:botx_pro_v16/app/v56_native_shell.dart';
++import 'package:botx_pro_v16/core/config/app_config.dart';
++import 'package:botx_pro_v16/core/theme/v56_theme.dart';
++import 'package:flutter/material.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++
++final demoFlowConfig = AppConfig(
++  apiBaseUrl: Uri(scheme: 'http', host: '127.0.0.1', port: 8080),
++  wsBaseUrl: Uri(
++    scheme: 'ws',
++    host: '127.0.0.1',
++    port: 8080,
++    path: '/realtime',
++  ),
++  environment: 'offline-demo',
++  commandTimeout: const Duration(seconds: 25),
++  backendConfigured: false,
++);
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++
++  testWidgets('Guest V56 shell creates a demo account from a virtual balance', (
++    tester,
++  ) async {
++    SharedPreferences.setMockInitialValues(const {});
++    final controller = V16AppController(
++      config: demoFlowConfig,
++      guestMode: true,
++    );
++    final themes = V56ThemeController();
++    addTearDown(controller.dispose);
++    addTearDown(themes.dispose);
++
++    await tester.runAsync(() => controller.initialize());
++    expect(controller.localDemoActive, isFalse);
++
++    await tester.pumpWidget(
++      MaterialApp(
++        debugShowCheckedModeBanner: false,
++        theme: themes.theme,
++        home: V56NativeShell(
++          controller: controller,
++          themeController: themes,
++        ),
++      ),
++    );
++    await tester.pump();
++
++    final demoSetup = find.byKey(const ValueKey('v56_demo_setup'));
++    expect(demoSetup, findsOneWidget);
++    expect(find.text('Create Demo Account'), findsOneWidget);
++
++    final startDemo = find.byKey(const ValueKey('v56_start_demo_trading'));
++    expect(startDemo, findsOneWidget);
++    expect(tester.widget<FilledButton>(startDemo).onPressed, isNotNull);
++    expect(find.byKey(const ValueKey('v56_demo_amount')), findsOneWidget);
++    expect(find.textContaining('all five BotX bots'), findsOneWidget);
++  });
++}
