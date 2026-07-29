@@ -5,6 +5,11 @@ on:
     branches: [main]
     paths:
       - 'release-trigger/v56-0-3-kronos-edge-to-edge.txt'
+      - 'patches/BOTX_PRO_V56_0_2_TARGET8.patch.gz.b64'
+      - 'patches/BOTX_PRO_V56_0_2_EDGE_TO_EDGE.patch.gz.b64'
+      - 'patches/BOTX_PRO_V56_0_2_CI_TEST_ISOLATION.patch'
+      - 'patches/BOTX_PRO_V56_0_2_FINAL_GATE_FIX.patch'
+      - 'patches/BOTX_PRO_V56_0_2_TEST_PROCESS_ISOLATION.patch'
       - 'patches/BOTX_PRO_V56_0_3_KRONOS_EDGE_UPGRADE.patch'
       - '.github/workflows/release-android-v56-0-3-kronos.yml'
   workflow_dispatch:
@@ -20,7 +25,7 @@ concurrency:
 jobs:
   signed-apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       GH_TOKEN: ${{ github.token }}
       SOURCE_FILE_ID: 1CpzzVCoTWhvo67LZ5fEty_UruvDzsy08
@@ -30,7 +35,7 @@ jobs:
       TEST_ISOLATION_SHA256: ae1c6b2bb3fb13ae9b12fcc53a1c109999ec31821fc9962a0c3d81483bebe865
       FINAL_GATE_FIX_SHA256: f8404cc00fe967affd95c130e23b5e8baa7328685f6b6a9836bae248ba91e7ae
       TEST_PROCESS_ISOLATION_SHA256: 5eb8f6565c07da67de436de504cc54232771e45facdd5e151cd73591b2b19893
-      KRONOS_EDGE_PATCH_SHA256: 0c773b10c42622fe90137ce34897af9c42b69b1b9858729dfe3d095ffdf8c29c
+      KRONOS_EDGE_PATCH_SHA256: c10a9d09790904029ac392eedc42fdb2816ec3fb07f40a70730ece15a60d0c76
       SIGNING_TAG: botx-android-signing-v1
 
     steps:

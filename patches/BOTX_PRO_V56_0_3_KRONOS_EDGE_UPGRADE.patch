@@ -35,7 +35,7 @@ index 0000000..3863ead
 +- Theme files: unchanged by Target-8 patch
 +- Old releases: not overwritten
 diff --git a/lib/app/v16_app_controller.dart b/lib/app/v16_app_controller.dart
-index e64dd3e..c956620 100644
+index e64dd3e..52a0540 100644
 --- a/lib/app/v16_app_controller.dart
 +++ b/lib/app/v16_app_controller.dart
 @@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
@@ -54,7 +54,7 @@ index e64dd3e..c956620 100644
      _chartSubscription = _chartRealtime.events.listen(_handleChartEvent);
      _localDemo = LocalDemoEngine(onChanged: (snapshot) {
        _snapshot = snapshot;
-@@ -233,15 +235,19 @@ class V16AppController extends ChangeNotifier {
+@@ -233,15 +235,20 @@ class V16AppController extends ChangeNotifier {
    final ApiClient _api;
    final RealtimeClient _realtime;
    late final ChartRealtimeClient _chartRealtime;
@@ -64,6 +64,7 @@ index e64dd3e..c956620 100644
    StreamSubscription<Map<String, dynamic>>? _chartSubscription;
    Timer? _refreshDebounce;
 +  Timer? _kronosRefreshDebounce;
++  int _kronosRequestGeneration = 0;
    Future<void>? _initialization;
    Map<String, dynamic> _chartSnapshot = const {};
    String _chartSnapshotKey = '';
@@ -74,7 +75,18 @@ index e64dd3e..c956620 100644
  
    final List<V16BrokerDefinition> brokers = [];
    final List<V16MarketSymbol> symbols = [];
-@@ -556,6 +562,12 @@ class V16AppController extends ChangeNotifier {
+@@ -500,6 +507,10 @@ class V16AppController extends ChangeNotifier {
+     final symbol = selectedSymbol.toUpperCase();
+     final key = '${account.id}|$symbol|$selectedTimeframe';
+     if (!force && _chartSnapshotKey == key && _chartSnapshot.isNotEmpty) return;
++    _kronosRefreshDebounce?.cancel();
++    final kronosGeneration = ++_kronosRequestGeneration;
++    kronosLoading = false;
++    kronosError = null;
+     chartLoading = true;
+     chartError = null;
+     _chartSnapshotKey = key;
+@@ -556,6 +567,13 @@ class V16AppController extends ChangeNotifier {
          'newsTruthPolicy': news['truthPolicy'] ?? 'source-linked-only',
        };
        chartError = null;
@@ -83,11 +95,12 @@ index e64dd3e..c956620 100644
 +        symbol: symbol,
 +        timeframe: selectedTimeframe,
 +        candles: candles,
++        generation: kronosGeneration,
 +      ));
        await _chartRealtime.connect(accountId: account.id, symbol: symbol, resolution: resolution);
      } on ApiException catch (exception) {
        if (_chartSnapshotKey == key) {
-@@ -571,6 +583,51 @@ class V16AppController extends ChangeNotifier {
+@@ -571,6 +589,69 @@ class V16AppController extends ChangeNotifier {
      }
    }
  
@@ -96,18 +109,32 @@ index e64dd3e..c956620 100644
 +    required String symbol,
 +    required String timeframe,
 +    required List<Map<String, dynamic>> candles,
++    int? generation,
 +  }) async {
++    final requestGeneration = generation ?? ++_kronosRequestGeneration;
++    bool isCurrentRequest() =>
++        _chartSnapshotKey == key &&
++        requestGeneration == _kronosRequestGeneration;
++
 +    if (candles.length < KronosIntelligenceController.minimumCandles) {
-+      if (_chartSnapshotKey == key) {
++      if (isCurrentRequest()) {
++        _chartSnapshot = <String, dynamic>{
++          ..._chartSnapshot,
++          'kronosStatus': 'unavailable',
++        };
 +        kronosLoading = false;
 +        kronosError = 'At least ${KronosIntelligenceController.minimumCandles} verified candles are required.';
 +        notifyListeners();
 +      }
 +      return;
 +    }
-+    if (_chartSnapshotKey != key) return;
++    if (!isCurrentRequest()) return;
 +    kronosLoading = true;
 +    kronosError = null;
++    _chartSnapshot = <String, dynamic>{
++      ..._chartSnapshot,
++      'kronosStatus': 'loading',
++    };
 +    notifyListeners();
 +    try {
 +      final forecast = await _kronos.forecast(
@@ -118,18 +145,22 @@ index e64dd3e..c956620 100644
 +        horizon: timeframe == '1D' ? 5 : 12,
 +        sampleCount: 5,
 +      );
-+      if (_chartSnapshotKey != key) return;
++      if (!isCurrentRequest()) return;
 +      _chartSnapshot = <String, dynamic>{
 +        ..._chartSnapshot,
 +        ...forecast.toMarketSnapshotPatch(),
 +      };
 +      kronosError = null;
 +    } on ApiException catch (exception) {
-+      if (_chartSnapshotKey == key) {
++      if (isCurrentRequest()) {
++        _chartSnapshot = <String, dynamic>{
++          ..._chartSnapshot,
++          'kronosStatus': 'unavailable',
++        };
 +        kronosError = exception.message;
 +      }
 +    } finally {
-+      if (_chartSnapshotKey == key) {
++      if (isCurrentRequest()) {
 +        kronosLoading = false;
 +        notifyListeners();
 +      }
@@ -139,7 +170,7 @@ index e64dd3e..c956620 100644
    void _handleChartEvent(Map<String, dynamic> event) {
      final type = '${event['type'] ?? ''}';
      if (type == 'chart.feed_unavailable') {
-@@ -582,6 +639,7 @@ class V16AppController extends ChangeNotifier {
+@@ -582,6 +663,7 @@ class V16AppController extends ChangeNotifier {
      final account = selectedAccount;
      if (account == null || '${event['accountId'] ?? ''}' != account.id || '${event['symbol'] ?? ''}'.toUpperCase() != selectedSymbol.toUpperCase()) return;
      final candles = _mapList(_chartSnapshot['candles']).toList();
@@ -147,7 +178,7 @@ index e64dd3e..c956620 100644
      final bar = event['bar'];
      if (bar is Map) {
        final next = Map<String, dynamic>.from(bar);
-@@ -590,6 +648,7 @@ class V16AppController extends ChangeNotifier {
+@@ -590,6 +672,7 @@ class V16AppController extends ChangeNotifier {
          candles[candles.length - 1] = next;
        } else {
          candles.add(next);
@@ -155,12 +186,25 @@ index e64dd3e..c956620 100644
          if (candles.length > 500) candles.removeAt(0);
        }
      }
-@@ -608,6 +667,20 @@ class V16AppController extends ChangeNotifier {
+@@ -605,9 +688,34 @@ class V16AppController extends ChangeNotifier {
+       'spread': quote['spread'],
+       'source': event['source'],
+       'qualityState': event['qualityState'],
++      if (appendedCandle) 'kronosStatus': 'stale',
      };
      chartError = null;
++    int? kronosGeneration;
++    if (appendedCandle) {
++      _kronosRefreshDebounce?.cancel();
++      kronosGeneration = ++_kronosRequestGeneration;
++      kronosLoading =
++          candles.length >= KronosIntelligenceController.minimumCandles;
++      kronosError = kronosLoading
++          ? null
++          : 'At least ${KronosIntelligenceController.minimumCandles} verified candles are required.';
++    }
      notifyListeners();
 +    if (appendedCandle && candles.length >= KronosIntelligenceController.minimumCandles) {
-+      _kronosRefreshDebounce?.cancel();
 +      final key = _chartSnapshotKey;
 +      final symbol = selectedSymbol;
 +      final timeframe = selectedTimeframe;
@@ -170,13 +214,14 @@ index e64dd3e..c956620 100644
 +          symbol: symbol,
 +          timeframe: timeframe,
 +          candles: candles,
++          generation: kronosGeneration,
 +        ));
 +      });
 +    }
    }
  
    List<V16MarketSymbol> symbolsForCategory(String category) => symbols.where((item) => item.category == category).toList();
-@@ -746,6 +819,11 @@ class V16AppController extends ChangeNotifier {
+@@ -746,6 +854,11 @@ class V16AppController extends ChangeNotifier {
      final account = selectedAccount;
      if (account == null) throw ApiException('Create a demo account or connect a broker account first.', code: 'ACCOUNT_REQUIRED');
      if (bot.displayName == 'Create My Own Bot') throw ApiException('Create My Own Bot requires a restricted strategy draft and backtest before deployment.', code: 'CUSTOM_BOT_DRAFT_REQUIRED');
@@ -188,7 +233,7 @@ index e64dd3e..c956620 100644
      final result = await _api.postJson(
        '/v1/bots/deployments',
        {
-@@ -753,7 +831,7 @@ class V16AppController extends ChangeNotifier {
+@@ -753,7 +866,7 @@ class V16AppController extends ChangeNotifier {
          'symbol': symbol.toUpperCase(),
          'environment': account.environment,
          if (account.id.isNotEmpty) 'brokerAccountId': account.id,
@@ -197,7 +242,7 @@ index e64dd3e..c956620 100644
        },
        idempotencyKey: _idempotency('bot'),
      );
-@@ -845,6 +923,7 @@ class V16AppController extends ChangeNotifier {
+@@ -845,6 +958,7 @@ class V16AppController extends ChangeNotifier {
    @override
    void dispose() {
      _refreshDebounce?.cancel();
@@ -206,10 +251,10 @@ index e64dd3e..c956620 100644
      unawaited(_realtime.close());
      unawaited(_chartSubscription?.cancel());
 diff --git a/lib/app/v56_native_shell.dart b/lib/app/v56_native_shell.dart
-index 3e37829..22b148c 100644
+index 3e37829..efbf27e 100644
 --- a/lib/app/v56_native_shell.dart
 +++ b/lib/app/v56_native_shell.dart
-@@ -1644,6 +1644,20 @@ class _MarketDetailState extends State<_MarketDetail> {
+@@ -1644,6 +1644,42 @@ class _MarketDetailState extends State<_MarketDetail> {
          (series.isEmpty ? null : series.reduce(math.max));
      final confidence =
          _doubleValue(data?['confidence'] ?? data?['probability']);
@@ -217,6 +262,9 @@ index 3e37829..22b148c 100644
 +    final kronos = kronosRaw is Map
 +        ? Map<String, dynamic>.from(kronosRaw)
 +        : const <String, dynamic>{};
++    final kronosStatus =
++        '${data?['kronosStatus'] ?? 'unavailable'}'.trim().toLowerCase();
++    final kronosFresh = kronosStatus == 'fresh';
 +    final kronosDirection = '${kronos['direction'] ?? 'unavailable'}';
 +    final kronosBullish = _doubleValue(kronos['bullishProbability']);
 +    final kronosBearish = _doubleValue(kronos['bearishProbability']);
@@ -227,40 +275,51 @@ index 3e37829..22b148c 100644
 +        ? (kronos['pathCount'] as num).toInt()
 +        : int.tryParse('${kronos['pathCount'] ?? ''}');
 +    final kronosModel = '${kronos['model'] ?? ''}';
++    final kronosConfirmation = !kronosFresh
++        ? (controller.kronosLoading
++            ? 'Forecasting from verified candles…'
++            : kronosStatus == 'stale'
++                ? 'Stale forecast · NO TRADE'
++                : controller.kronosError ?? 'Awaiting cloud forecast')
++        : kronos.isEmpty
++            ? 'Awaiting cloud forecast'
++            : '${_kronosDirectionLabel(kronosDirection)} · ${((kronosConfidence ?? (kronosBullish != null && kronosBearish != null ? math.max(kronosBullish, kronosBearish) : 0)) * 100).toStringAsFixed(0)}%';
++    final kronosRange = !kronosFresh
++        ? (kronosStatus == 'stale'
++            ? 'Unavailable · stale forecast'
++            : 'Unavailable')
++        : kronosLow == null || kronosHigh == null
++            ? 'Unavailable'
++            : '${_price(kronosLow)} – ${_price(kronosHigh)}';
++    final kronosProvider = kronosModel.isEmpty
++        ? 'Kronos-base not loaded'
++        : '${kronosModel.split('/').last}${kronosPaths == null ? '' : ' · $kronosPaths paths'}${kronosFresh ? '' : ' · stale'}';
      final news = _extractNews(data);
      final chartMessage = controller.chartError ??
          'TradingView chart\nConnect to the internet to load public visualization';
-@@ -1767,6 +1781,29 @@ class _MarketDetailState extends State<_MarketDetail> {
+@@ -1767,6 +1803,21 @@ class _MarketDetailState extends State<_MarketDetail> {
                      ? 'Awaiting verified candles'
                      : _price(resistanceValue),
                ),
 +              Divider(height: 1, color: context.botx.cardBorder),
 +              _InfoRow(
 +                label: 'Kronos confirmation',
-+                value: kronos.isEmpty
-+                    ? (controller.kronosLoading
-+                        ? 'Forecasting from verified candles…'
-+                        : controller.kronosError ?? 'Awaiting cloud forecast')
-+                    : '${_kronosDirectionLabel(kronosDirection)} · ${((kronosConfidence ?? (kronosBullish != null && kronosBearish != null ? math.max(kronosBullish, kronosBearish) : 0)) * 100).toStringAsFixed(0)}%',
++                value: kronosConfirmation,
 +              ),
 +              Divider(height: 1, color: context.botx.cardBorder),
 +              _InfoRow(
 +                label: 'Kronos forecast range',
-+                value: kronosLow == null || kronosHigh == null
-+                    ? 'Unavailable'
-+                    : '${_price(kronosLow)} – ${_price(kronosHigh)}',
++                value: kronosRange,
 +              ),
 +              Divider(height: 1, color: context.botx.cardBorder),
 +              _InfoRow(
 +                label: 'Forecast provider',
-+                value: kronosModel.isEmpty
-+                    ? 'Kronos-base not loaded'
-+                    : '${kronosModel.split('/').last}${kronosPaths == null ? '' : ' · $kronosPaths paths'}',
++                value: kronosProvider,
 +              ),
                const SizedBox(height: 24),
                Row(
                  children: [
-@@ -1921,6 +1958,13 @@ class _MarketNewsRow extends StatelessWidget {
+@@ -1921,6 +1972,13 @@ class _MarketNewsRow extends StatelessWidget {
        );
  }
  
@@ -276,10 +335,10 @@ index 3e37829..22b148c 100644
        '15m' => '15',
 diff --git a/lib/core/models/kronos_models.dart b/lib/core/models/kronos_models.dart
 new file mode 100644
-index 0000000..55b4149
+index 0000000..2a942ed
 --- /dev/null
 +++ b/lib/core/models/kronos_models.dart
-@@ -0,0 +1,153 @@
+@@ -0,0 +1,306 @@
 +class KronosForecastSummary {
 +  const KronosForecastSummary({
 +    required this.direction,
@@ -312,20 +371,100 @@ index 0000000..55b4149
 +  final int pathCount;
 +
 +  factory KronosForecastSummary.fromJson(Map<String, dynamic> json) {
++    final direction = '${json['direction'] ?? ''}'.trim().toLowerCase();
++    if (!const {'bullish', 'bearish', 'neutral', 'no_trade'}
++        .contains(direction)) {
++      throw FormatException(
++        'Kronos summary has an invalid direction: ${json['direction']}',
++      );
++    }
++    final bullishProbability = _requiredDouble(
++      json,
++      const ['bullish_probability', 'bullishProbability'],
++      min: 0,
++      max: 1,
++    );
++    final bearishProbability = _requiredDouble(
++      json,
++      const ['bearish_probability', 'bearishProbability'],
++      min: 0,
++      max: 1,
++    );
++    final neutralProbability = _requiredDouble(
++      json,
++      const ['neutral_probability', 'neutralProbability'],
++      min: 0,
++      max: 1,
++    );
++    final probabilityTotal =
++        bullishProbability + bearishProbability + neutralProbability;
++    if ((probabilityTotal - 1).abs() > 0.05) {
++      throw FormatException(
++        'Kronos direction probabilities must total approximately 1; '
++        'received $probabilityTotal',
++      );
++    }
++    final expectedLow = _requiredDouble(
++      json,
++      const ['expected_low', 'expectedLow'],
++      minExclusive: 0,
++    );
++    final expectedHigh = _requiredDouble(
++      json,
++      const ['expected_high', 'expectedHigh'],
++      minExclusive: 0,
++    );
++    final expectedClose = _requiredDouble(
++      json,
++      const ['expected_close', 'expectedClose'],
++      minExclusive: 0,
++    );
++    if (expectedLow > expectedHigh ||
++        expectedClose < expectedLow ||
++        expectedClose > expectedHigh) {
++      throw const FormatException(
++        'Kronos expected prices must satisfy low <= close <= high',
++      );
++    }
 +    return KronosForecastSummary(
-+      direction: '${json['direction'] ?? 'no_trade'}',
-+      bullishProbability: _double(json['bullish_probability'] ?? json['bullishProbability']),
-+      bearishProbability: _double(json['bearish_probability'] ?? json['bearishProbability']),
-+      neutralProbability: _double(json['neutral_probability'] ?? json['neutralProbability']),
-+      confidence: _double(json['confidence']),
-+      expectedReturnBps: _double(json['expected_return_bps'] ?? json['expectedReturnBps']),
-+      expectedVolatilityBps: _double(json['expected_volatility_bps'] ?? json['expectedVolatilityBps']),
-+      pathDispersionBps: _double(json['path_dispersion_bps'] ?? json['pathDispersionBps']),
-+      uncertainty: _double(json['uncertainty']),
-+      expectedLow: _double(json['expected_low'] ?? json['expectedLow']),
-+      expectedHigh: _double(json['expected_high'] ?? json['expectedHigh']),
-+      expectedClose: _double(json['expected_close'] ?? json['expectedClose']),
-+      pathCount: _integer(json['path_count'] ?? json['pathCount']),
++      direction: direction,
++      bullishProbability: bullishProbability,
++      bearishProbability: bearishProbability,
++      neutralProbability: neutralProbability,
++      confidence: _requiredDouble(
++        json,
++        const ['confidence'],
++        min: 0,
++        max: 1,
++      ),
++      expectedReturnBps: _requiredDouble(
++        json,
++        const ['expected_return_bps', 'expectedReturnBps'],
++      ),
++      expectedVolatilityBps: _requiredDouble(
++        json,
++        const ['expected_volatility_bps', 'expectedVolatilityBps'],
++        min: 0,
++      ),
++      pathDispersionBps: _requiredDouble(
++        json,
++        const ['path_dispersion_bps', 'pathDispersionBps'],
++        min: 0,
++      ),
++      uncertainty: _requiredDouble(
++        json,
++        const ['uncertainty'],
++        min: 0,
++        max: 1,
++      ),
++      expectedLow: expectedLow,
++      expectedHigh: expectedHigh,
++      expectedClose: expectedClose,
++      pathCount: _requiredInt(
++        json,
++        const ['path_count', 'pathCount'],
++        min: 1,
++      ),
 +    );
 +  }
 +
@@ -381,8 +520,18 @@ index 0000000..55b4149
 +      timeframe: '${json['timeframe'] ?? ''}',
 +      generatedAt: _date(json['generated_at'] ?? json['generatedAt']),
 +      expiresAt: _date(json['expires_at'] ?? json['expiresAt']),
-+      inputCandleCount: _integer(json['input_candle_count'] ?? json['inputCandleCount']),
-+      horizon: _integer(json['horizon']),
++      inputCandleCount: _requiredInt(
++        json,
++        const ['input_candle_count', 'inputCandleCount'],
++        min: 1,
++        max: 512,
++      ),
++      horizon: _requiredInt(
++        json,
++        const ['horizon'],
++        min: 1,
++        max: 120,
++      ),
 +      summary: KronosForecastSummary.fromJson(Map<String, dynamic>.from(summaryRaw)),
 +      cached: json['cached'] == true,
 +    );
@@ -419,14 +568,77 @@ index 0000000..55b4149
 +      };
 +}
 +
-+double _double(Object? value) {
-+  if (value is num) return value.toDouble();
-+  return double.tryParse('$value') ?? 0;
++double _requiredDouble(
++  Map<String, dynamic> json,
++  List<String> keys, {
++  double? min,
++  double? max,
++  double? minExclusive,
++}) {
++  final entry = _requiredEntry(json, keys);
++  final value = entry.$2;
++  final parsed = value is num
++      ? value.toDouble()
++      : double.tryParse('$value'.trim());
++  if (parsed == null || !parsed.isFinite) {
++    throw FormatException(
++      'Kronos field ${entry.$1} must be a finite number',
++    );
++  }
++  if (min != null && parsed < min ||
++      max != null && parsed > max ||
++      minExclusive != null && parsed <= minExclusive) {
++    throw FormatException(
++      'Kronos field ${entry.$1} is outside its allowed range',
++    );
++  }
++  return parsed;
 +}
 +
-+int _integer(Object? value) {
-+  if (value is num) return value.toInt();
-+  return int.tryParse('$value') ?? 0;
++int _requiredInt(
++  Map<String, dynamic> json,
++  List<String> keys, {
++  int? min,
++  int? max,
++}) {
++  final entry = _requiredEntry(json, keys);
++  final value = entry.$2;
++  int? parsed;
++  if (value is int) {
++    parsed = value;
++  } else if (value is num &&
++      value.toDouble().isFinite &&
++      value.toDouble() == value.toDouble().truncateToDouble()) {
++    parsed = value.toInt();
++  } else {
++    parsed = int.tryParse('$value'.trim());
++  }
++  if (parsed == null) {
++    throw FormatException(
++      'Kronos field ${entry.$1} must be an integer',
++    );
++  }
++  if (min != null && parsed < min || max != null && parsed > max) {
++    throw FormatException(
++      'Kronos field ${entry.$1} is outside its allowed range',
++    );
++  }
++  return parsed;
++}
++
++(String, Object) _requiredEntry(
++  Map<String, dynamic> json,
++  List<String> keys,
++) {
++  for (final key in keys) {
++    final value = json[key];
++    if (json.containsKey(key) && value != null) {
++      return (key, value);
++    }
++  }
++  throw FormatException(
++    'Kronos response is missing required field ${keys.first}',
++  );
 +}
 +
 +DateTime? _date(Object? value) {
@@ -618,17 +830,15 @@ index a49bccd..670d613 100644
    sdk: '>=3.4.0 <4.0.0'
 diff --git a/test/kronos_contract_test.dart b/test/kronos_contract_test.dart
 new file mode 100644
-index 0000000..0896ec4
+index 0000000..8fa999a
 --- /dev/null
 +++ b/test/kronos_contract_test.dart
-@@ -0,0 +1,51 @@
+@@ -0,0 +1,104 @@
 +import 'package:botx_pro_v16/core/models/kronos_models.dart';
 +import 'package:botx_pro_v16/features/intelligence/kronos_controller.dart';
 +import 'package:flutter_test/flutter_test.dart';
 +
-+void main() {
-+  test('Kronos response parses the pinned forecast contract', () {
-+    final forecast = KronosForecast.fromJson({
++Map<String, dynamic> validForecastJson() => {
 +      'request_id': 'req-1',
 +      'model': 'NeoQuasar/Kronos-base',
 +      'tokenizer': 'NeoQuasar/Kronos-Tokenizer-base',
@@ -636,7 +846,7 @@ index 0000000..0896ec4
 +      'symbol': 'XAUUSD',
 +      'timeframe': '1H',
 +      'generated_at': '2026-07-29T00:00:00Z',
-+      'expires_at': '2026-07-29T01:00:00Z',
++      'expires_at': '2099-07-29T01:00:00Z',
 +      'input_candle_count': 400,
 +      'horizon': 12,
 +      'cached': false,
@@ -655,11 +865,66 @@ index 0000000..0896ec4
 +        'expected_close': 3350.0,
 +        'path_count': 5,
 +      },
-+    });
++    };
++
++void main() {
++  test('Kronos response parses the pinned forecast contract', () {
++    final forecast = KronosForecast.fromJson(validForecastJson());
 +    expect(forecast.model, 'NeoQuasar/Kronos-base');
 +    expect(forecast.summary.direction, 'bullish');
 +    expect(forecast.summary.pathCount, 5);
++    expect(forecast.fresh, isTrue);
++    expect(forecast.toMarketSnapshotPatch()['kronosStatus'], 'fresh');
 +    expect(forecast.toMarketSnapshotPatch()['kronosForecast'], isA<Map>());
++  });
++
++  test('Kronos contract rejects missing or invalid required numbers', () {
++    final missingConfidence = validForecastJson();
++    final missingSummary =
++        Map<String, dynamic>.from(missingConfidence['summary']! as Map)
++          ..remove('confidence');
++    missingConfidence['summary'] = missingSummary;
++    expect(
++      () => KronosForecast.fromJson(missingConfidence),
++      throwsFormatException,
++    );
++
++    final invalidProbability = validForecastJson();
++    invalidProbability['summary'] = {
++      ...Map<String, dynamic>.from(invalidProbability['summary']! as Map),
++      'bullish_probability': 1.2,
++    };
++    expect(
++      () => KronosForecast.fromJson(invalidProbability),
++      throwsFormatException,
++    );
++
++    final nonFiniteRange = validForecastJson();
++    nonFiniteRange['summary'] = {
++      ...Map<String, dynamic>.from(nonFiniteRange['summary']! as Map),
++      'expected_high': double.infinity,
++    };
++    expect(
++      () => KronosForecast.fromJson(nonFiniteRange),
++      throwsFormatException,
++    );
++  });
++
++  test('Expired or missing Kronos expiry is always marked stale', () {
++    final expired = validForecastJson()
++      ..['expires_at'] = '2020-01-01T00:00:00Z';
++    expect(
++      KronosForecast.fromJson(expired)
++          .toMarketSnapshotPatch()['kronosStatus'],
++      'stale',
++    );
++
++    final missingExpiry = validForecastJson()..remove('expires_at');
++    expect(
++      KronosForecast.fromJson(missingExpiry)
++          .toMarketSnapshotPatch()['kronosStatus'],
++      'stale',
++    );
 +  });
 +
 +  test('AI Institutional profile keeps Kronos a capped confirmation layer', () {
