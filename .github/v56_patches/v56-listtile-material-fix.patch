@@ -1,0 +1,102 @@
+--- a/lib/app/botx_app.dart
++++ b/lib/app/botx_app.dart
+@@ -475,26 +475,29 @@
+                             ),
+                           ),
+                           const SizedBox(height: 8),
+-                          CheckboxListTile(
+-                            key: const ValueKey('v56_auth_legal_consent'),
+-                            contentPadding: EdgeInsets.zero,
+-                            controlAffinity: ListTileControlAffinity.leading,
+-                            value: _acceptedLegal,
+-                            onChanged: _busy
+-                                ? null
+-                                : (value) => setState(
+-                                      () => _acceptedLegal = value ?? false,
+-                                    ),
+-                            title: const Text(
+-                              'I accept the Terms, Privacy Policy and Trading Risk Disclosure.',
+-                              style: TextStyle(
+-                                fontSize: 11,
+-                                fontWeight: FontWeight.w700,
++                          Material(
++                            color: Colors.transparent,
++                            child: CheckboxListTile(
++                              key: const ValueKey('v56_auth_legal_consent'),
++                              contentPadding: EdgeInsets.zero,
++                              controlAffinity: ListTileControlAffinity.leading,
++                              value: _acceptedLegal,
++                              onChanged: _busy
++                                  ? null
++                                  : (value) => setState(
++                                        () => _acceptedLegal = value ?? false,
++                                      ),
++                              title: const Text(
++                                'I accept the Terms, Privacy Policy and Trading Risk Disclosure.',
++                                style: TextStyle(
++                                  fontSize: 11,
++                                  fontWeight: FontWeight.w700,
++                                ),
++                              ),
++                              subtitle: const Text(
++                                'Real-money trading remains locked until broker authorization and live certification.',
++                                style: TextStyle(fontSize: 9.5),
+                               ),
+-                            ),
+-                            subtitle: const Text(
+-                              'Real-money trading remains locked until broker authorization and live certification.',
+-                              style: TextStyle(fontSize: 9.5),
+                             ),
+                           ),
+                         ],
+--- a/lib/app/v56_native_shell.dart
++++ b/lib/app/v56_native_shell.dart
+@@ -4750,26 +4750,29 @@
+                             ),
+                           ),
+                           const SizedBox(height: 4),
+-                          SwitchListTile(
+-                            key: const ValueKey(
+-                              'v56_custom_bot_external_trigger',
+-                            ),
+-                            contentPadding: EdgeInsets.zero,
+-                            value: _externalTrigger,
+-                            onChanged: _busy
+-                                ? null
+-                                : (value) =>
+-                                    setState(() => _externalTrigger = value),
+-                            title: const Text(
+-                              'Allow signed external trigger',
+-                              style: TextStyle(
+-                                fontSize: 13,
+-                                fontWeight: FontWeight.w800,
++                          Material(
++                            color: Colors.transparent,
++                            child: SwitchListTile(
++                              key: const ValueKey(
++                                'v56_custom_bot_external_trigger',
++                              ),
++                              contentPadding: EdgeInsets.zero,
++                              value: _externalTrigger,
++                              onChanged: _busy
++                                  ? null
++                                  : (value) =>
++                                      setState(() => _externalTrigger = value),
++                              title: const Text(
++                                'Allow signed external trigger',
++                                style: TextStyle(
++                                  fontSize: 13,
++                                  fontWeight: FontWeight.w800,
++                                ),
++                              ),
++                              subtitle: const Text(
++                                'Signed triggers still route through the Shared Risk Engine and cannot bypass deterministic limits.',
++                                style: TextStyle(fontSize: 10),
+                               ),
+-                            ),
+-                            subtitle: const Text(
+-                              'Signed triggers still route through the Shared Risk Engine and cannot bypass deterministic limits.',
+-                              style: TextStyle(fontSize: 10),
+                             ),
+                           ),
+                           if (_error != null) ...[
