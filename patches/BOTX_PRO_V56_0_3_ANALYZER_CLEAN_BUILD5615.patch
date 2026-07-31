@@ -1,0 +1,265 @@
+diff --git a/lib/app/v16_app_controller.dart b/lib/app/v16_app_controller.dart
+index 21b6da7..cf055cd 100644
+--- a/lib/app/v16_app_controller.dart
++++ b/lib/app/v16_app_controller.dart
+@@ -441,8 +441,10 @@ class V16AppController extends ChangeNotifier {
+     final financial = _snapshot['account'];
+     if (financial is Map) {
+       final account = V16Account.fromJson(Map<String, dynamic>.from(financial));
+-      if (account.id.isNotEmpty && !rows.any((item) => item.id == account.id))
++      if (account.id.isNotEmpty &&
++          !rows.any((item) => item.id == account.id)) {
+         rows.insert(0, account);
++      }
+     }
+     return rows;
+   }
+@@ -459,8 +461,9 @@ class V16AppController extends ChangeNotifier {
+     final account = Map<String, dynamic>.from(raw);
+     final active = selectedAccount;
+     final financialId = '${account['id'] ?? ''}';
+-    if (active == null || financialId.isEmpty || active.id == financialId)
++    if (active == null || financialId.isEmpty || active.id == financialId) {
+       return account;
++    }
+     return null;
+   }
+ 
+@@ -470,8 +473,9 @@ class V16AppController extends ChangeNotifier {
+   bool get isGuestDemo => guestMode;
+   String get connectionLabel {
+     final connection = _snapshot['connection'];
+-    if (connection is Map)
++    if (connection is Map) {
+       return '${connection['label'] ?? connection['state'] ?? 'Connected'}';
++    }
+     if (_localDemo.configured) return 'BotX Demo · practice feed';
+     if (guestMode) return 'Demo ready';
+     return config.backendConfigured
+@@ -767,7 +771,9 @@ class V16AppController extends ChangeNotifier {
+     if (account == null ||
+         '${event['accountId'] ?? ''}' != account.id ||
+         '${event['symbol'] ?? ''}'.toUpperCase() !=
+-            selectedSymbol.toUpperCase()) return;
++            selectedSymbol.toUpperCase()) {
++      return;
++    }
+     final candles = _mapList(_chartSnapshot['candles']).toList();
+     var appendedCandle = false;
+     final bar = event['bar'];
+@@ -838,8 +844,9 @@ class V16AppController extends ChangeNotifier {
+ 
+   Future<void> selectAccount(int index) async {
+     final list = accounts;
+-    if (index < 0 || index >= list.length || selectedAccountIndex == index)
++    if (index < 0 || index >= list.length || selectedAccountIndex == index) {
+       return;
++    }
+     final account = list[index];
+     selectedAccountIndex = index;
+     notifyListeners();
+@@ -864,21 +871,26 @@ class V16AppController extends ChangeNotifier {
+ 
+   void selectPeriod(String value) {
+     if (!const {'1D', '1W', '1M', '1Y'}.contains(value) ||
+-        selectedPeriod == value) return;
++        selectedPeriod == value) {
++      return;
++    }
+     selectedPeriod = value;
+     notifyListeners();
+   }
+ 
+   void selectOrderTab(String value) {
+     if (!const {'open', 'pending', 'closed'}.contains(value) ||
+-        orderTab == value) return;
++        orderTab == value) {
++      return;
++    }
+     orderTab = value;
+     notifyListeners();
+   }
+ 
+   void selectMarketCategory(String value) {
+-    if (!marketCategories.contains(value) || selectedMarketCategory == value)
++    if (!marketCategories.contains(value) || selectedMarketCategory == value) {
+       return;
++    }
+     selectedMarketCategory = value;
+     final list = symbolsForCategory(value);
+     if (list.isNotEmpty) selectedSymbol = list.first.canonical;
+@@ -937,10 +949,12 @@ class V16AppController extends ChangeNotifier {
+     required String credentialSecret,
+   }) async {
+     _requireBackend();
+-    if (!broker.supported)
++    if (!broker.supported) {
+       throw ApiException(
+-          'This broker is planned but not enabled in the backend catalogue.',
+-          code: 'BROKER_PLANNED');
++        'This broker is planned but not enabled in the backend catalogue.',
++        code: 'BROKER_PLANNED',
++      );
++    }
+     final result = await _api.postJson(
+       '/v1/broker-accounts/connect',
+       {
+@@ -962,9 +976,12 @@ class V16AppController extends ChangeNotifier {
+       {required V16BrokerDefinition broker,
+       required String environment}) async {
+     _requireBackend();
+-    if (!broker.connectionMethods.contains('ctrader_oauth'))
+-      throw ApiException('cTrader OAuth is not enabled for this broker.',
+-          code: 'CTRADER_UNSUPPORTED');
++    if (!broker.connectionMethods.contains('ctrader_oauth')) {
++      throw ApiException(
++        'cTrader OAuth is not enabled for this broker.',
++        code: 'CTRADER_UNSUPPORTED',
++      );
++    }
+     return _api.postJson(
+         '/v1/broker-accounts/ctrader/oauth/begin',
+         {
+@@ -988,14 +1005,18 @@ class V16AppController extends ChangeNotifier {
+     }
+     _requireBackend();
+     final account = selectedAccount;
+-    if (account == null)
++    if (account == null) {
+       throw ApiException(
+-          'Create a demo account or connect a broker account first.',
+-          code: 'ACCOUNT_REQUIRED');
+-    if (bot.displayName == 'Create My Own Bot')
++        'Create a demo account or connect a broker account first.',
++        code: 'ACCOUNT_REQUIRED',
++      );
++    }
++    if (bot.displayName == 'Create My Own Bot') {
+       throw ApiException(
+-          'Create My Own Bot requires a restricted strategy draft and backtest before deployment.',
+-          code: 'CUSTOM_BOT_DRAFT_REQUIRED');
++        'Create My Own Bot requires a restricted strategy draft and backtest before deployment.',
++        code: 'CUSTOM_BOT_DRAFT_REQUIRED',
++      );
++    }
+     final deploymentConfig = Map<String, dynamic>.from(configOverride);
+     if (bot.displayName == 'AI Institutional') {
+       deploymentConfig['intelligenceProfile'] =
+@@ -1030,10 +1051,12 @@ class V16AppController extends ChangeNotifier {
+       );
+     }
+     _requireBackend();
+-    if (prompt.trim().length < 20)
++    if (prompt.trim().length < 20) {
+       throw ApiException(
+-          'Describe entry, exit and risk rules in at least 20 characters.',
+-          code: 'CUSTOM_STRATEGY_PROMPT_REQUIRED');
++        'Describe entry, exit and risk rules in at least 20 characters.',
++        code: 'CUSTOM_STRATEGY_PROMPT_REQUIRED',
++      );
++    }
+     final result = await _api.postJson(
+         '/v1/strategies/synthesize',
+         {
+@@ -1050,8 +1073,9 @@ class V16AppController extends ChangeNotifier {
+   Future<Map<String, dynamic>> runBacktest(
+       {required String symbol,
+       Map<String, dynamic> strategy = const {}}) async {
+-    if (_localDemo.configured)
++    if (_localDemo.configured) {
+       return _localDemo.backtest(symbol: symbol, strategy: strategy);
++    }
+     _requireBackend();
+     return _api.postJson(
+         '/v1/backtests/resolve',
+diff --git a/lib/app/v56_native_shell.dart b/lib/app/v56_native_shell.dart
+index efbf27e..447a268 100644
+--- a/lib/app/v56_native_shell.dart
++++ b/lib/app/v56_native_shell.dart
+@@ -1258,8 +1258,9 @@ String _slashPair(String raw) {
+   if (symbol.endsWith('USDT') && symbol.length > 4) {
+     return '${symbol.substring(0, symbol.length - 4)} / USDT';
+   }
+-  if (symbol.length == 6)
++  if (symbol.length == 6) {
+     return '${symbol.substring(0, 3)} / ${symbol.substring(3)}';
++  }
+   return raw;
+ }
+ 
+@@ -4000,50 +4001,6 @@ class _RealizedCurvePainter extends CustomPainter {
+       oldDelegate.grid != grid;
+ }
+ 
+-class _MarketLinePainter extends CustomPainter {
+-  const _MarketLinePainter(
+-    this.values, {
+-    required this.accent,
+-    required this.grid,
+-  });
+-  final List<double> values;
+-  final Color accent;
+-  final Color grid;
+-
+-  @override
+-  void paint(Canvas canvas, Size size) {
+-    _GridPainter(grid).paint(canvas, size);
+-    final minValue = values.reduce(math.min);
+-    final maxValue = values.reduce(math.max);
+-    final spread = math.max(1e-9, maxValue - minValue);
+-    final path = Path();
+-    for (var i = 0; i < values.length; i++) {
+-      final x = i * size.width / (values.length - 1);
+-      final y = size.height -
+-          ((values[i] - minValue) / spread) * (size.height - 24) -
+-          12;
+-      if (i == 0) {
+-        path.moveTo(x, y);
+-      } else {
+-        path.lineTo(x, y);
+-      }
+-    }
+-    final line = Paint()
+-      ..color = accent
+-      ..style = PaintingStyle.stroke
+-      ..strokeWidth = 2.4
+-      ..strokeCap = StrokeCap.round
+-      ..strokeJoin = StrokeJoin.round;
+-    canvas.drawPath(path, line);
+-  }
+-
+-  @override
+-  bool shouldRepaint(covariant _MarketLinePainter oldDelegate) =>
+-      oldDelegate.values != values ||
+-      oldDelegate.accent != accent ||
+-      oldDelegate.grid != grid;
+-}
+-
+ class _V56DemoSetupScreen extends StatefulWidget {
+   const _V56DemoSetupScreen({required this.controller});
+ 
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 670d613..5f3821d 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -1,7 +1,7 @@
+ name: botx_pro_v16
+ publish_to: none
+ description: BotX Pro native Flutter application using the locked V56 Gold UI and cloud-authoritative trading.
+-version: 56.0.3+5614
++version: 56.0.3+5615
+ 
+ environment:
+   sdk: '>=3.4.0 <4.0.0'
+diff --git a/android/local.properties b/android/local.properties
+index c35d202..38170fb 100644
+--- a/android/local.properties
++++ b/android/local.properties
+@@ -2,4 +2,4 @@ sdk.dir=/usr/local/lib/android/sdk
+ flutter.sdk=/opt/hostedtoolcache/flutter/stable-3.44.7-x64/flutter
+ flutter.buildMode=release
+ flutter.versionName=56.0.3
+-flutter.versionCode=5614
+\ No newline at end of file
++flutter.versionCode=5615
+\ No newline at end of file

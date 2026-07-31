@@ -1,4 +1,4 @@
-name: BotX Pro V56.0.2 Target-8 Legacy Build
+name: BotX Pro V56.0.2 Legacy Edge Build
 
 on:
   workflow_dispatch:
