@@ -29,6 +29,7 @@ jobs:
       PATCH_B64_SHA256: 1a5b31df61da1c7b011f6a40334713476a2ecb213fb2f808e04e8e4e0a6771eb
       PATCH_SHA256: 373b4de355845d9d96f4a0f2c2c7229035ae16be70dda95dcc0f05413e534719
       FIXTURE_SHA256: 73c9699759be1b4b38d266cc70a293a0204a72a3328484e4508f6c3de926ce14
+      COMPACT_FIX_SHA256: 2529ddecdd37f2b4f885432d965bcb045b8d3dcb9fa9c8e947e7a62dd2fcc0d5
       SIGNING_TAG: botx-android-signing-v1
 
     steps:
@@ -73,6 +74,9 @@ jobs:
           echo "${PATCH_SHA256}  build5616.patch" | sha256sum --check --strict
           patch -p1 -d app < build5616.patch
 
+          echo "${COMPACT_FIX_SHA256}  patches/build5616/compact-history-fix.patch" | sha256sum --check --strict
+          patch -p1 -d app < patches/build5616/compact-history-fix.patch
+
           mkdir -p app/test/support
           echo "${FIXTURE_SHA256}  test/support/v56_server_snapshot_fixture.dart" | sha256sum --check --strict
           cp test/support/v56_server_snapshot_fixture.dart app/test/support/
@@ -85,31 +89,27 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           from PIL import Image
-
-          paths = [
+          names = [
               'activtrades.png', 'acy.png', 'alpari.png', 'amarkets.png',
               'avatrade.png', 'fbs.png', 'fxpro.png', 'fxtm.png',
               'hf_markets.png', 'ic_markets.png', 'roboforex.png',
               'traders_way.png', 'vantage.png', 'vt_markets.png',
               'windsor.png', 'zero_markets.png',
           ]
-          root = Path('app/assets/brokers')
-          for name in paths:
-              path = root / name
+          for name in names:
+              path = Path('app/assets/brokers') / name
               if not path.is_file():
                   raise SystemExit(f'missing broker logo: {path}')
-              with Image.open(path) as image:
-                  image = image.convert('RGBA')
+              with Image.open(path) as source:
+                  image = source.convert('RGBA')
                   canvas = Image.new('RGBA', (128, 128), (0, 0, 0, 0))
                   image.thumbnail((112, 112), Image.Resampling.LANCZOS)
-                  canvas.alpha_composite(
-                      image,
-                      ((128 - image.width) // 2, (128 - image.height) // 2),
-                  )
+                  canvas.alpha_composite(image, ((128-image.width)//2, (128-image.height)//2))
                   canvas.save(path, optimize=True)
           PY
 
           grep -q '^version: 56.0.3+5616$' app/pubspec.yaml
+          grep -q 'Complete bot history' app/lib/app/v56_native_shell.dart
           test -s app/test/support/v56_server_snapshot_fixture.dart
           test ! -e app/lib/app/local_demo_engine.dart
           test ! -e app/test/local_demo_engine_test.dart
@@ -123,8 +123,7 @@ jobs:
           set -euo pipefail
           mkdir -p signing
           gh release download "${SIGNING_TAG}" --repo "${GITHUB_REPOSITORY}" \
-            --pattern 'botx-release.jks' \
-            --pattern 'botx-signing.env' \
+            --pattern 'botx-release.jks' --pattern 'botx-signing.env' \
             --dir signing --clobber
           source signing/botx-signing.env
           echo "::add-mask::${STORE_PASSWORD}"
@@ -193,18 +192,14 @@ jobs:
             && test "${{ steps.build.outcome }}" = success; then
             cp "${APK}" dist/BotXPro-V56.0.3-Strict-Build5616.apk
           fi
-
           rm -f app/android/app/botx-release.jks app/android/key.properties
           rm -rf app/build app/.dart_tool
           zip -qr dist/BotXPro-V56.0.3-Strict-App-Source-Build5616.zip app
           cp analyze-build5616.log tests-build5616.log build-release-5616.log \
             apk-signature-verification-5616.txt dist/ 2>/dev/null || true
-          (
-            cd dist
-            find . -maxdepth 1 -type f \
-              \( -name '*.apk' -o -name '*.zip' \) -print0 \
-              | sort -z | xargs -0 -r sha256sum > SHA256SUMS.txt
-          )
+          (cd dist && find . -maxdepth 1 -type f \
+            \( -name '*.apk' -o -name '*.zip' \) -print0 \
+            | sort -z | xargs -0 -r sha256sum > SHA256SUMS.txt)
 
       - name: Upload Build5616 APK and source
         if: always()
