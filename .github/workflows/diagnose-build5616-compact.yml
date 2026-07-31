@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'patches/build5616/compact-diagnostic.patch'
+      - 'patches/build5616/terminal-compact-fix.patch'
       - '.github/workflows/diagnose-build5616-compact.yml'
   workflow_dispatch:
 
@@ -23,6 +24,7 @@ jobs:
       PATCH_B64_SHA256: 1a5b31df61da1c7b011f6a40334713476a2ecb213fb2f808e04e8e4e0a6771eb
       PATCH_SHA256: 373b4de355845d9d96f4a0f2c2c7229035ae16be70dda95dcc0f05413e534719
       COMPACT_FIX_SHA256: 2529ddecdd37f2b4f885432d965bcb045b8d3dcb9fa9c8e947e7a62dd2fcc0d5
+      TERMINAL_FIX_SHA256: 3ba88cb7b961a69c30907dd1ab40d514dd2cba64ab669630bda9cf51b1c4f3ef
       DIAGNOSTIC_SHA256: c180eb0bc9531f451d07ac3721fd6fc346cc5fd3e6e8c0ce7a49911a8b1dfc48
       FIXTURE_SHA256: 73c9699759be1b4b38d266cc70a293a0204a72a3328484e4508f6c3de926ce14
 
@@ -54,6 +56,8 @@ jobs:
           patch -p1 -d app < build5616.patch
           echo "${COMPACT_FIX_SHA256}  patches/build5616/compact-history-fix.patch" | sha256sum -c --strict
           patch -p1 -d app < patches/build5616/compact-history-fix.patch
+          echo "${TERMINAL_FIX_SHA256}  patches/build5616/terminal-compact-fix.patch" | sha256sum -c --strict
+          patch -p1 -d app < patches/build5616/terminal-compact-fix.patch
           echo "${DIAGNOSTIC_SHA256}  patches/build5616/compact-diagnostic.patch" | sha256sum -c --strict
           patch -p1 -d app < patches/build5616/compact-diagnostic.patch
           mkdir -p app/test/support
