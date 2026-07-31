@@ -1,0 +1,70 @@
+name: Diagnose Build5616 Compact Overflow
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'patches/build5616/compact-diagnostic.patch'
+      - '.github/workflows/diagnose-build5616-compact.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  compact-diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      BASE_RUN_ID: '30640115772'
+      BASE_ARTIFACT: BotX-Pro-V56.0.3-AnalyzerClean-Delivery-Build5615
+      BASE_SOURCE_ZIP: BotXPro-V56.0.3-AnalyzerClean-App-Source-Build5615.zip
+      PATCH_B64_SHA256: 1a5b31df61da1c7b011f6a40334713476a2ecb213fb2f808e04e8e4e0a6771eb
+      PATCH_SHA256: 373b4de355845d9d96f4a0f2c2c7229035ae16be70dda95dcc0f05413e534719
+      COMPACT_FIX_SHA256: 2529ddecdd37f2b4f885432d965bcb045b8d3dcb9fa9c8e947e7a62dd2fcc0d5
+      DIAGNOSTIC_SHA256: c180eb0bc9531f451d07ac3721fd6fc346cc5fd3e6e8c0ce7a49911a8b1dfc48
+      FIXTURE_SHA256: 73c9699759be1b4b38d266cc70a293a0204a72a3328484e4508f6c3de926ce14
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.7'
+          channel: stable
+          cache: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.BASE_ARTIFACT }}
+          path: previous
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.BASE_RUN_ID }}
+      - name: Reconstruct diagnostic source
+        run: |
+          set -euo pipefail
+          mkdir app extracted
+          unzip -q "previous/${BASE_SOURCE_ZIP}" -d extracted
+          APP_ROOT="$(dirname "$(find extracted -maxdepth 3 -name pubspec.yaml | head -n 1)")"
+          cp -a "${APP_ROOT}/." app/
+          cat patches/build5616/part*.b64 > build5616.patch.gz.b64
+          echo "${PATCH_B64_SHA256}  build5616.patch.gz.b64" | sha256sum -c --strict
+          base64 -d build5616.patch.gz.b64 | gzip -dc > build5616.patch
+          echo "${PATCH_SHA256}  build5616.patch" | sha256sum -c --strict
+          patch -p1 -d app < build5616.patch
+          echo "${COMPACT_FIX_SHA256}  patches/build5616/compact-history-fix.patch" | sha256sum -c --strict
+          patch -p1 -d app < patches/build5616/compact-history-fix.patch
+          echo "${DIAGNOSTIC_SHA256}  patches/build5616/compact-diagnostic.patch" | sha256sum -c --strict
+          patch -p1 -d app < patches/build5616/compact-diagnostic.patch
+          mkdir -p app/test/support
+          echo "${FIXTURE_SHA256}  test/support/v56_server_snapshot_fixture.dart" | sha256sum -c --strict
+          cp test/support/v56_server_snapshot_fixture.dart app/test/support/
+          rm -f app/assets/v56/index.html app/lib/app/local_demo_engine.dart app/test/local_demo_engine_test.dart
+      - name: Run focused compact diagnostic
+        working-directory: app
+        run: |
+          flutter pub get
+          dart format lib/app/v56_native_shell.dart test/v56_ui_smoke_test.dart
+          flutter test --concurrency=1 --reporter expanded \
+            --plain-name 'Market chart and strategy studio avoid overflow on compact UI' \
+            test/v56_ui_smoke_test.dart
