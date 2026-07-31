@@ -75,6 +75,7 @@ jobs:
           rm -f app/lib/app/local_demo_engine.dart
           rm -f app/test/local_demo_engine_test.dart
 
+          python -m pip install --disable-pip-version-check pillow
           python - <<'PY'
           from pathlib import Path
           from PIL import Image
@@ -132,7 +133,6 @@ jobs:
         working-directory: app
         run: |
           set -euo pipefail
-          python -m pip install --disable-pip-version-check pillow
           flutter pub get
           dart format lib/app/botx_app.dart lib/app/v16_app_controller.dart \
             lib/app/v56_native_shell.dart test/v56_demo_setup_flow_test.dart \
