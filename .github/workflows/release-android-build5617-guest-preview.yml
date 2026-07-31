@@ -1,0 +1,258 @@
+name: BotX Pro V56.0.3 Build5617 Guest Preview
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'patches/build5617/guest-preview-fix.patch.gz.b64'
+      - '.github/workflows/release-android-build5617-guest-preview.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: v56-0-3-build5617-guest-preview-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  signed-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      BASE_RUN_ID: '30654823507'
+      BASE_ARTIFACT: BotX-Pro-V56.0.3-Minimal-UI-Final-Delivery-Build5616
+      BASE_SOURCE_ZIP: BotXPro-V56.0.3-MinimalUI-Final-Full-App-Source-Build5616.zip
+      GUEST_PATCH_B64_SHA256: 6c4a70c64ee44cf35b54b29e0bb06e87611290fe10ad911929de5d1c1339d417
+      GUEST_PATCH_SHA256: 2c8171d283e4808ec5b87105c26f5a3cf27a33b557f11fda70e11496bafaacab
+      SIGNING_TAG: botx-android-signing-v1
+
+    steps:
+      - name: Checkout exact PR state
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Flutter 3.44.7
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.7'
+          channel: stable
+          cache: true
+
+      - name: Restore latest successful Build5616 source
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.BASE_ARTIFACT }}
+          path: previous
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.BASE_RUN_ID }}
+
+      - name: Apply safe guest preview patch
+        run: |
+          set -euo pipefail
+          test -s "previous/${BASE_SOURCE_ZIP}"
+          mkdir app extracted
+          unzip -q "previous/${BASE_SOURCE_ZIP}" -d extracted
+          APP_ROOT="$(dirname "$(find extracted -maxdepth 3 -name pubspec.yaml | head -n 1)")"
+          test -n "${APP_ROOT}"
+          cp -a "${APP_ROOT}/." app/
+
+          find app/lib/core/theme -type f -print0 | sort -z \
+            | xargs -0 sha256sum > theme-before.sha256
+
+          echo "${GUEST_PATCH_B64_SHA256}  patches/build5617/guest-preview-fix.patch.gz.b64" \
+            | sha256sum --check --strict
+          base64 -d patches/build5617/guest-preview-fix.patch.gz.b64 \
+            | gzip -dc > guest-preview-fix.patch
+          echo "${GUEST_PATCH_SHA256}  guest-preview-fix.patch" \
+            | sha256sum --check --strict
+          patch -p2 -d app < guest-preview-fix.patch
+
+          find app/lib/core/theme -type f -print0 | sort -z \
+            | xargs -0 sha256sum > theme-after.sha256
+          diff -u theme-before.sha256 theme-after.sha256
+
+          grep -q '^version: 56.0.3+5617$' app/pubspec.yaml
+          test ! -e app/lib/app/local_demo_engine.dart
+          test ! -e app/test/local_demo_engine_test.dart
+          test ! -e app/assets/v56/index.html
+          grep -q "ValueKey('v56_login_skip')" app/lib/app/botx_app.dart
+          grep -q 'Skip login • Preview app' app/lib/app/botx_app.dart
+          grep -q "ValueKey('v56_guest_preview_banner')" app/lib/app/v56_native_shell.dart
+          grep -q "code: 'AUTHENTICATION_REQUIRED'" app/lib/app/v16_app_controller.dart
+          grep -q 'Complete bot history' app/lib/app/v56_native_shell.dart
+          grep -q "'LIVE BOT ENGINE'" app/lib/app/v56_native_shell.dart
+          grep -q 'Kronos confirmation' app/lib/app/v56_native_shell.dart
+          grep -q 'v56_market_chart' app/lib/app/v56_native_shell.dart
+
+      - name: Restore persistent release signing identity
+        run: |
+          set -euo pipefail
+          mkdir -p signing
+          gh release download "${SIGNING_TAG}" --repo "${GITHUB_REPOSITORY}" \
+            --pattern 'botx-release.jks' --pattern 'botx-signing.env' \
+            --dir signing --clobber
+          source signing/botx-signing.env
+          echo "::add-mask::${STORE_PASSWORD}"
+          echo "::add-mask::${KEY_PASSWORD}"
+          cp signing/botx-release.jks app/android/app/botx-release.jks
+          {
+            echo "storeFile=botx-release.jks"
+            echo "storePassword=${STORE_PASSWORD}"
+            echo "keyAlias=${KEY_ALIAS}"
+            echo "keyPassword=${KEY_PASSWORD}"
+          } > app/android/key.properties
+
+      - name: Resolve and format Build5617 source
+        working-directory: app
+        run: |
+          set -euo pipefail
+          flutter pub get
+          dart format lib/app/botx_app.dart lib/app/v56_native_shell.dart \
+            test/v56_ui_smoke_test.dart test/v56_demo_setup_flow_test.dart
+
+      - name: Validate guest preview contracts
+        id: contracts
+        run: |
+          set -euo pipefail
+          echo '1/7 Offline build exposes Skip login'
+          grep -q "ValueKey('v56_login_skip')" app/lib/app/botx_app.dart
+          grep -q 'Skip login • Preview app' app/lib/app/botx_app.dart
+
+          echo '2/7 Guest opens the complete native shell'
+          grep -q "guestMode: guestMode" app/lib/app/botx_app.dart
+          ! grep -q 'return const _V56AuthenticationRequiredScreen' app/lib/app/v56_native_shell.dart
+
+          echo '3/7 Guest status is always visible and can return to sign in'
+          grep -q "ValueKey('v56_guest_preview_banner')" app/lib/app/v56_native_shell.dart
+          grep -q "ValueKey('v56_guest_sign_in')" app/lib/app/v56_native_shell.dart
+
+          echo '4/7 Financial actions remain server-authenticated'
+          grep -q "code: 'AUTHENTICATION_REQUIRED'" app/lib/app/v16_app_controller.dart
+          grep -q 'Sign in to connect brokers, deploy bots or use cloud trading services.' \
+            app/lib/app/v16_app_controller.dart
+
+          echo '5/7 Backend-configured signup remains available'
+          grep -q "ValueKey('v56_login_signup')" app/lib/app/botx_app.dart
+          grep -q 'New users can open the create-account flow' app/test/v56_ui_smoke_test.dart
+
+          echo '6/7 No local fake financial engine is restored'
+          test ! -e app/lib/app/local_demo_engine.dart
+          test ! -e app/test/local_demo_engine_test.dart
+          test ! -e app/assets/v56/index.html
+
+          echo '7/7 Theme and colour files are unchanged'
+          diff -u theme-before.sha256 theme-after.sha256
+
+      - name: Analyze complete Flutter source
+        id: analyze
+        working-directory: app
+        run: |
+          set -o pipefail
+          flutter analyze 2>&1 | tee ../analyze-build5617-guest-preview.log
+
+      - name: Run complete non-visual Flutter release tests
+        id: tests
+        working-directory: app
+        run: |
+          set -euo pipefail
+          mapfile -t tests < <(find test -type f -name '*_test.dart' \
+            ! -name 'v56_visual_capture_test.dart' | sort)
+          test "${#tests[@]}" -gt 0
+          timeout 25m flutter test --concurrency=1 --reporter expanded \
+            "${tests[@]}" 2>&1 | tee ../tests-build5617-guest-preview.log
+
+      - name: Build fresh signed release APK
+        id: build
+        working-directory: app
+        run: |
+          set -o pipefail
+          timeout 35m flutter build apk --release \
+            --build-name=56.0.3 --build-number=5617 \
+            --dart-define=BOTX_ENV=release-candidate \
+            --dart-define=ALLOW_LIVE_MODE=false 2>&1 \
+            | tee ../build-release-5617-guest-preview.log
+
+      - name: Verify signature and package Build5617
+        id: package
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p dist continuation
+          APK='app/build/app/outputs/flutter-apk/app-release.apk'
+          if test -s "${APK}"; then
+            APKSIGNER="$(find "${ANDROID_HOME}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+            "${APKSIGNER}" verify --verbose --print-certs "${APK}" \
+              | tee apk-signature-verification-5617-guest-preview.txt
+          fi
+
+          if test -s "${APK}" \
+            && test "${{ steps.contracts.outcome }}" = success \
+            && test "${{ steps.analyze.outcome }}" = success \
+            && test "${{ steps.tests.outcome }}" = success \
+            && test "${{ steps.build.outcome }}" = success; then
+            cp "${APK}" dist/BotXPro-V56.0.3-GuestPreview-Build5617.apk
+          fi
+
+          rm -f app/android/app/botx-release.jks app/android/key.properties
+          rm -rf app/build app/.dart_tool
+          zip -qr dist/BotXPro-V56.0.3-GuestPreview-Full-App-Source-Build5617.zip app
+
+          cp guest-preview-fix.patch continuation/
+          cp patches/build5617/guest-preview-fix.patch.gz.b64 continuation/
+          cp .github/workflows/release-android-build5617-guest-preview.yml continuation/
+          cp theme-before.sha256 theme-after.sha256 continuation/
+          cat > continuation/BOTX_PRO_BUILD5617_GUEST_PREVIEW_HANDOFF.md <<EOF
+          # BotX Pro V56.0.3 Build5617 — Guest Preview Handoff
+
+          - Repository: ${GITHUB_REPOSITORY}
+          - Pull Request: #24
+          - Branch: ${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}
+          - Workflow SHA: ${GITHUB_SHA}
+          - Workflow run: ${GITHUB_RUN_ID}
+          - Base source run: ${BASE_RUN_ID}
+          - Flutter: 3.44.7
+          - Version: 56.0.3+5617
+          - PR was not merged by this workflow.
+
+          Build5617 adds a safe Skip login / Guest Preview flow for builds without a configured backend. Guest users can inspect the complete native Flutter UI and navigate Home, Market, Bots and Settings. Broker connections, cloud financial data, demo account creation, bot deployment and real-money actions remain locked behind authenticated server-authoritative services. No local fake financial engine was added. Theme files are unchanged.
+          EOF
+          zip -qr dist/BotXPro-V56.0.3-Build5617-GuestPreview-Continuation.zip continuation
+
+          cp analyze-build5617-guest-preview.log \
+            tests-build5617-guest-preview.log \
+            build-release-5617-guest-preview.log \
+            apk-signature-verification-5617-guest-preview.txt \
+            dist/ 2>/dev/null || true
+
+          (cd dist && find . -maxdepth 1 -type f \
+            \( -name '*.apk' -o -name '*.zip' \) -print0 \
+            | sort -z | xargs -0 -r sha256sum > SHA256SUMS.txt)
+
+      - name: Upload Build5617 delivery
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BotX-Pro-V56.0.3-Guest-Preview-Delivery-Build5617
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Enforce Build5617 release gates
+        if: always()
+        run: |
+          test "${{ steps.contracts.outcome }}" = success
+          test "${{ steps.analyze.outcome }}" = success
+          test "${{ steps.tests.outcome }}" = success
+          test "${{ steps.build.outcome }}" = success
+          test "${{ steps.package.outcome }}" = success
+          test -s dist/BotXPro-V56.0.3-GuestPreview-Build5617.apk
+          test -s dist/BotXPro-V56.0.3-GuestPreview-Full-App-Source-Build5617.zip
+          test -s dist/BotXPro-V56.0.3-Build5617-GuestPreview-Continuation.zip
