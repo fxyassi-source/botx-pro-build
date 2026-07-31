@@ -30,6 +30,7 @@ jobs:
       PATCH_SHA256: 373b4de355845d9d96f4a0f2c2c7229035ae16be70dda95dcc0f05413e534719
       FIXTURE_SHA256: 73c9699759be1b4b38d266cc70a293a0204a72a3328484e4508f6c3de926ce14
       COMPACT_FIX_SHA256: 2529ddecdd37f2b4f885432d965bcb045b8d3dcb9fa9c8e947e7a62dd2fcc0d5
+      TERMINAL_FIX_SHA256: 3ba88cb7b961a69c30907dd1ab40d514dd2cba64ab669630bda9cf51b1c4f3ef
       SIGNING_TAG: botx-android-signing-v1
 
     steps:
@@ -76,6 +77,8 @@ jobs:
 
           echo "${COMPACT_FIX_SHA256}  patches/build5616/compact-history-fix.patch" | sha256sum --check --strict
           patch -p1 -d app < patches/build5616/compact-history-fix.patch
+          echo "${TERMINAL_FIX_SHA256}  patches/build5616/terminal-compact-fix.patch" | sha256sum --check --strict
+          patch -p1 -d app < patches/build5616/terminal-compact-fix.patch
 
           mkdir -p app/test/support
           echo "${FIXTURE_SHA256}  test/support/v56_server_snapshot_fixture.dart" | sha256sum --check --strict
@@ -104,12 +107,16 @@ jobs:
                   image = source.convert('RGBA')
                   canvas = Image.new('RGBA', (128, 128), (0, 0, 0, 0))
                   image.thumbnail((112, 112), Image.Resampling.LANCZOS)
-                  canvas.alpha_composite(image, ((128-image.width)//2, (128-image.height)//2))
+                  canvas.alpha_composite(
+                      image,
+                      ((128 - image.width) // 2, (128 - image.height) // 2),
+                  )
                   canvas.save(path, optimize=True)
           PY
 
           grep -q '^version: 56.0.3+5616$' app/pubspec.yaml
           grep -q 'Complete bot history' app/lib/app/v56_native_shell.dart
+          grep -q "'LIVE BOT ENGINE'" app/lib/app/v56_native_shell.dart
           test -s app/test/support/v56_server_snapshot_fixture.dart
           test ! -e app/lib/app/local_demo_engine.dart
           test ! -e app/test/local_demo_engine_test.dart
