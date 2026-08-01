@@ -127,11 +127,11 @@ jobs:
           grep -q 'MarketSessionService' app/lib/core/paper/local_paper_engine.dart
           grep -q 'PaperNewsService' app/lib/core/paper/local_paper_engine.dart
           grep -q 'ForexLive' app/lib/core/news/paper_news_service.dart
-          grep -q 'Fair Economy' app/lib/core/news/paper_news_service.dart
+          grep -q 'faireconomy.media' app/lib/core/news/paper_news_service.dart
           grep -q 'BinancePaperQuoteSource' app/lib/core/paper/local_paper_engine.dart
           grep -q 'YahooPaperQuoteSource' app/lib/core/paper/local_paper_engine.dart
           grep -q 'MARKET_CLOSED' app/lib/core/paper/local_paper_engine.dart
-          grep -q 'InstitutionalBotContractValidator' app/lib/features/bots/institutional_bot_contracts.dart
+          grep -q 'BotXConfigAudit' app/lib/features/bots/institutional_bot_contracts.dart
           ! grep -q "'#BOTX-DEMO'" app/lib/app/v56_native_shell.dart
           ! grep -R -n -i --fixed-strings 'Elirox' app/lib app/assets
           ! find app -type f \( -name '*.jks' -o -name '*.keystore' \) -not -path 'app/android/app/botx-release.jks' | grep .
