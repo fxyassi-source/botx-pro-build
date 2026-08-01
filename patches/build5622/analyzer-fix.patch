@@ -1,0 +1,46 @@
+--- a/lib/app/v56_native_shell.dart
++++ b/lib/app/v56_native_shell.dart
+@@ -7677,29 +7677,6 @@
+   return result;
+ }
+ 
+-class _DeploymentSectionLabel extends StatelessWidget {
+-  const _DeploymentSectionLabel({required this.title, required this.subtitle});
+-  final String title;
+-  final String subtitle;
+-
+-  @override
+-  Widget build(BuildContext context) => Column(
+-        crossAxisAlignment: CrossAxisAlignment.start,
+-        children: [
+-          Text(
+-            title,
+-            style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900),
+-          ),
+-          const SizedBox(height: 3),
+-          Text(
+-            subtitle,
+-            style: TextStyle(
+-                color: context.botx.muted, fontSize: 9.8, height: 1.3),
+-          ),
+-        ],
+-      );
+-}
+-
+ class _DeploymentNumberField extends StatelessWidget {
+   const _DeploymentNumberField({
+     required this.controller,
+--- a/lib/core/paper/local_paper_engine.dart
++++ b/lib/core/paper/local_paper_engine.dart
+@@ -830,8 +830,9 @@
+       history,
+     );
+     final entryCondition = '${config['entryCondition'] ?? 'Optional'}';
+-    final initialVolume =
+-        (_number(config['initialOrderVolume']) ?? .01).clamp(.001, 100);
++    final initialVolume = (_number(config['initialOrderVolume']) ?? .01)
++        .clamp(.001, 100)
++        .toDouble();
+ 
+     if (rows.isEmpty) {
+       final qualifies = forceInitial ||
