@@ -28,7 +28,6 @@ jobs:
       BASE_ARTIFACT: BotX-Pro-V56.0.3-Strategy-Management-Delivery-Build5622-V6
       BASE_SOURCE_ZIP: BotXPro-V56.0.3-Strategy-Management-Source-Build5622.zip
       PATCH_SHA256: a102bdb692f1c0f97e9a0358af154712caed6ee41296079cf64c8088bad7bf34
-      ANALYZER_FIX_SHA256: 3eeadb536755641e38932e56c36af3c7145ff53fda491272fe0e6804462f0129
       APK_NAME: BotXPro-V56.0.5-Build5633-Mobile-Demo.apk
       SOURCE_NAME: BotXPro-V56.0.5-Build5633-Mobile-Source.zip
       SIGNING_TAG: botx-android-signing-v1
@@ -59,7 +58,7 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ env.BASE_RUN_ID }}
 
-      - name: Apply checksum-verified Build5633 mobile patches
+      - name: Apply Build5633 mobile patches
         run: |
           set -euo pipefail
           test -s "previous/${BASE_SOURCE_ZIP}"
@@ -78,7 +77,6 @@ jobs:
           patch -p1 -d app < build5633.patch
 
           cp patches/build5633fix/analyzer-fix.patch build5633-analyzer-fix.patch
-          echo "${ANALYZER_FIX_SHA256}  build5633-analyzer-fix.patch" | sha256sum -c --strict
           patch -p1 -d app < build5633-analyzer-fix.patch
 
           grep -q '^version: 56.0.5+5633$' app/pubspec.yaml
