@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'patches/build5633/**'
+      - 'patches/build5633fix/**'
       - 'release-trigger/build5633/**'
       - '.github/workflows/release-android-build5633.yml'
   workflow_dispatch:
@@ -27,6 +28,7 @@ jobs:
       BASE_ARTIFACT: BotX-Pro-V56.0.3-Strategy-Management-Delivery-Build5622-V6
       BASE_SOURCE_ZIP: BotXPro-V56.0.3-Strategy-Management-Source-Build5622.zip
       PATCH_SHA256: a102bdb692f1c0f97e9a0358af154712caed6ee41296079cf64c8088bad7bf34
+      ANALYZER_FIX_SHA256: 3eeadb536755641e38932e56c36af3c7145ff53fda491272fe0e6804462f0129
       APK_NAME: BotXPro-V56.0.5-Build5633-Mobile-Demo.apk
       SOURCE_NAME: BotXPro-V56.0.5-Build5633-Mobile-Source.zip
       SIGNING_TAG: botx-android-signing-v1
@@ -57,7 +59,7 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ env.BASE_RUN_ID }}
 
-      - name: Apply checksum-verified Build5633 mobile patch
+      - name: Apply checksum-verified Build5633 mobile patches
         run: |
           set -euo pipefail
           test -s "previous/${BASE_SOURCE_ZIP}"
@@ -74,6 +76,10 @@ jobs:
           base64 -d build5633.patch.gz.b64 | gzip -dc > build5633.patch
           echo "${PATCH_SHA256}  build5633.patch" | sha256sum -c --strict
           patch -p1 -d app < build5633.patch
+
+          cat patches/build5633fix/part-*.b64 | tr -d '\r\n\t ' | base64 -d > build5633-analyzer-fix.patch
+          echo "${ANALYZER_FIX_SHA256}  build5633-analyzer-fix.patch" | sha256sum -c --strict
+          patch -p1 -d app < build5633-analyzer-fix.patch
 
           grep -q '^version: 56.0.5+5633$' app/pubspec.yaml
           test ! -e app/assets/v56/index.html
@@ -108,7 +114,9 @@ jobs:
             test/local_paper_engine_test.dart \
             test/market_session_service_test.dart \
             test/paper_news_service_test.dart \
-            test/v56_ui_smoke_test.dart
+            test/v56_demo_setup_flow_test.dart \
+            test/v56_ui_smoke_test.dart \
+            test/v56_visual_capture_test.dart
           cd ..
 
           find app/lib/core/theme -type f -print0 | sort -z | xargs -0 sha256sum > theme-after.sha256
@@ -152,6 +160,7 @@ jobs:
             test/market_session_service_test.dart \
             test/paper_news_service_test.dart \
             test/local_paper_engine_test.dart \
+            test/v56_demo_setup_flow_test.dart \
             test/v56_ui_smoke_test.dart 2>&1 | tee ../focused-tests-build5633.log
 
       - name: Complete non-visual Flutter regression suite
@@ -193,7 +202,7 @@ jobs:
 
           cp analyze-build5633.log focused-tests-build5633.log tests-build5633.log \
             build-build5633.log apksigner-build5633.log build5633.patch \
-            theme-before.sha256 theme-after.sha256 \
+            build5633-analyzer-fix.patch theme-before.sha256 theme-after.sha256 \
             market-chart-before.sha256 market-chart-after.sha256 delivery/
           cat > delivery/BUILD5633_REVIEW_REPORT.md <<'EOF'
           # BotX Pro V56.0.5 Build5633 — Mobile Demo Review APK
