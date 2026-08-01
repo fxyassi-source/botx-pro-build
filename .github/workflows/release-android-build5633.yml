@@ -26,7 +26,6 @@ jobs:
       BASE_RUN_ID: '30695204793'
       BASE_ARTIFACT: BotX-Pro-V56.0.3-Strategy-Management-Delivery-Build5622-V6
       BASE_SOURCE_ZIP: BotXPro-V56.0.3-Strategy-Management-Source-Build5622.zip
-      PATCH_B64_SHA256: fc58adcb075b7861cb12771513a142f93e83e28e28efb7cf1d5dd82fc724ac63
       PATCH_SHA256: a102bdb692f1c0f97e9a0358af154712caed6ee41296079cf64c8088bad7bf34
       APK_NAME: BotXPro-V56.0.5-Build5633-Mobile-Demo.apk
       SOURCE_NAME: BotXPro-V56.0.5-Build5633-Mobile-Source.zip
@@ -71,8 +70,7 @@ jobs:
           find app/lib/core/theme -type f -print0 | sort -z | xargs -0 sha256sum > theme-before.sha256
           sha256sum app/lib/features/market/trading_view_chart.dart > market-chart-before.sha256
 
-          cat patches/build5633/part-*.b64 > build5633.patch.gz.b64
-          echo "${PATCH_B64_SHA256}  build5633.patch.gz.b64" | sha256sum -c --strict
+          cat patches/build5633/part-*.b64 | tr -d '\r\n\t ' > build5633.patch.gz.b64
           base64 -d build5633.patch.gz.b64 | gzip -dc > build5633.patch
           echo "${PATCH_SHA256}  build5633.patch" | sha256sum -c --strict
           patch -p1 -d app < build5633.patch
@@ -116,7 +114,8 @@ jobs:
           find app/lib/core/theme -type f -print0 | sort -z | xargs -0 sha256sum > theme-after.sha256
           sha256sum app/lib/features/market/trading_view_chart.dart > market-chart-after.sha256
           diff -u theme-before.sha256 theme-after.sha256
-          diff -u market-chart-before.sha256 market-chart-after.sha256
+          sed 's/market-chart-before/market-chart-after/' market-chart-before.sha256 > market-chart-expected.sha256
+          diff -u market-chart-expected.sha256 market-chart-after.sha256
 
           for token in \
             v56_dca_entry_section v56_grid_structure_section \
