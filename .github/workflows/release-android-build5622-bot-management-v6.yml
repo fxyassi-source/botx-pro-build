@@ -29,6 +29,7 @@ jobs:
       FIX_SHA: 723590a4cae1642f6b51869686a9e14db34d6bdc9f224411b76666ebfc0ba7cb
       TEST_FIX_SHA: b02f78db3a6a34b596719874ea4fbcaaced34d0524c249cdabfc09348756425b
       ROUTE_FIX_SHA: 18ca45babcce5cbff0378aa237f580fefe9640c81823725a159c755fc96bd6e5
+      ACCORDION_FIX_SHA: 7fd0cd7908e74da83bc1f1a14b153f28a87ab9c1965c60d39e3c91c19bbdd90d
       APK_NAME: BotXPro-V56.0.3-Strategy-Management-Build5622.apk
       SOURCE_NAME: BotXPro-V56.0.3-Strategy-Management-Source-Build5622.zip
 
@@ -70,6 +71,8 @@ jobs:
           patch -p1 -d app < patches/build5622/widget-test-flow-fix.patch
           echo "${ROUTE_FIX_SHA}  patches/build5622/widget-route-back-fix.patch" | sha256sum -c --strict
           patch -p1 -d app < patches/build5622/widget-route-back-fix.patch
+          echo "${ACCORDION_FIX_SHA}  patches/build5622/widget-accordion-flow-fix.patch" | sha256sum -c --strict
+          patch -p1 -d app < patches/build5622/widget-accordion-flow-fix.patch
           grep -q '^version: 56.0.3+5622$' app/pubspec.yaml
           test ! -e app/lib/app/local_demo_engine.dart
           test ! -e app/test/local_demo_engine_test.dart
@@ -116,6 +119,7 @@ jobs:
           grep -q 'ALLOW_GUEST_PREVIEW' app/lib/app/botx_app.dart
           grep -q 'openBotDeploymentFromPicker' app/test/v56_ui_smoke_test.dart
           grep -q 'handlePopRoute' app/test/v56_ui_smoke_test.dart
+          grep -q 'expandDeploymentSection' app/test/v56_ui_smoke_test.dart
           grep -q 'v56_custom_archetype_\$key' app/test/v56_ui_smoke_test.dart
           ! grep -R -n --fixed-strings 'VERIFIED_PAPER_QUOTE_REQUIRED' app/lib
           ! grep -R -n --fixed-strings 'BotX Paper Broker' app/lib app/assets
@@ -168,6 +172,7 @@ jobs:
             patches/build5622/analyzer-fix.patch \
             patches/build5622/widget-test-flow-fix.patch \
             patches/build5622/widget-route-back-fix.patch \
+            patches/build5622/widget-accordion-flow-fix.patch \
             theme-before.sha256 theme-after.sha256 delivery/
           cat > delivery/BUILD5622_RELEASE_REPORT.md <<'EOF'
           # BotX Pro V56.0.3 Build5622 — Strategy-Specific Bot Management
