@@ -267,3 +267,26 @@ index 277448f..2a3065a 100644
        expect(find.byKey(const ValueKey('v56_dca_order_section')), findsNothing);
  
        expect(await tester.binding.handlePopRoute(), isTrue);
+--- a/test/v56_ui_smoke_test.dart
++++ b/test/v56_ui_smoke_test.dart
+@@ -127,18 +127,9 @@
+   WidgetTester tester,
+   String title,
+ ) async {
+-  final deployment = find.byKey(const ValueKey('v56_bot_deployment_config'));
+-  final list =
+-      find.descendant(of: deployment, matching: find.byType(ListView)).first;
+-  final scrollable =
+-      find.descendant(of: list, matching: find.byType(Scrollable)).first;
+   final target = find.text(title);
+-  await tester.scrollUntilVisible(
+-    target,
+-    220,
+-    scrollable: scrollable,
+-    maxScrolls: 12,
+-  );
++  await tester.ensureVisible(target);
++  await tester.pumpAndSettle();
+   await tester.tap(target);
+   await tester.pumpAndSettle();
+ }
