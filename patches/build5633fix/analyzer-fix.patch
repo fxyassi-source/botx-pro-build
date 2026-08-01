@@ -1,0 +1,154 @@
+diff --git a/lib/app/v16_app_controller.dart b/lib/app/v16_app_controller.dart
+index 914b656..72566fe 100644
+--- a/lib/app/v16_app_controller.dart
++++ b/lib/app/v16_app_controller.dart
+@@ -523,7 +523,9 @@ class V16AppController extends ChangeNotifier {
+       final tier = '${row['tier'] ?? row['plan'] ?? row['planCode'] ?? ''}'
+           .trim()
+           .toLowerCase();
+-      if (row['elite'] == true || row['institutionalEntry'] == true) return true;
++      if (row['elite'] == true || row['institutionalEntry'] == true) {
++        return true;
++      }
+       if (const {'elite', 'institutional', 'enterprise'}.contains(tier)) {
+         return true;
+       }
+diff --git a/lib/app/v56_native_shell.dart b/lib/app/v56_native_shell.dart
+index cbfaaed..907d6da 100644
+--- a/lib/app/v56_native_shell.dart
++++ b/lib/app/v56_native_shell.dart
+@@ -9595,7 +9595,8 @@ Future<void> _showBotControlSheet(
+     apiType: isCustom ? 'CUSTOM' : rawType,
+   );
+   final version = (bot['version'] as num?)?.toInt() ?? 1;
+-  const realResumeBlocked = false;
++  final realResumeBlocked =
++      environment == 'real' && !controller.realExecutionEnabled;
+   final active = const {
+     'creating',
+     'deploying',
+@@ -11122,7 +11123,7 @@ class _BotHistorySheetState extends State<_BotHistorySheet> {
+           padding: const EdgeInsets.fromLTRB(16, 14, 8, 6),
+           child: Row(
+             children: [
+-              const Expanded(
++              Expanded(
+                 child: Column(
+                   crossAxisAlignment: CrossAxisAlignment.start,
+                   children: [
+diff --git a/lib/core/paper/local_paper_engine.dart b/lib/core/paper/local_paper_engine.dart
+index 46dbef2..36d2e28 100644
+--- a/lib/core/paper/local_paper_engine.dart
++++ b/lib/core/paper/local_paper_engine.dart
+@@ -879,7 +879,9 @@ class LocalPaperEngine extends ChangeNotifier {
+     if (value.startsWith('XAU') || value.startsWith('XAG')) {
+       return {'USD'};
+     }
+-    if (value.length >= 6) return {value.substring(0, 3), value.substring(3, 6)};
++    if (value.length >= 6) {
++      return {value.substring(0, 3), value.substring(3, 6)};
++    }
+     return const <String>{};
+   }
+ 
+@@ -1479,15 +1481,23 @@ class LocalPaperEngine extends ChangeNotifier {
+     List<double> history,
+   ) {
+     final normalized = configured.trim().toLowerCase().replaceAll(' ', '_');
+-    if (const {'short', 'sell', 'sell_only'}.contains(normalized)) return 'sell';
+-    if (const {'long', 'buy', 'buy_only'}.contains(normalized)) return 'buy';
++    if (const {'short', 'sell', 'sell_only'}.contains(normalized)) {
++      return 'sell';
++    }
++    if (const {'long', 'buy', 'buy_only'}.contains(normalized)) {
++      return 'buy';
++    }
+     return _ema(history, 8) >= _ema(history, 21) ? 'buy' : 'sell';
+   }
+ 
+   String _directionOverride(String configured, String fallback) {
+     final normalized = configured.trim().toLowerCase().replaceAll(' ', '_');
+-    if (const {'short', 'sell', 'sell_only'}.contains(normalized)) return 'sell';
+-    if (const {'long', 'buy', 'buy_only'}.contains(normalized)) return 'buy';
++    if (const {'short', 'sell', 'sell_only'}.contains(normalized)) {
++      return 'sell';
++    }
++    if (const {'long', 'buy', 'buy_only'}.contains(normalized)) {
++      return 'buy';
++    }
+     return fallback;
+   }
+ 
+@@ -2062,7 +2072,7 @@ class BinancePaperQuoteSource implements PaperQuoteSource {
+     final last = tickerRaw is Map
+         ? _finite(tickerRaw['lastPrice']) ?? ((bid != null && ask != null) ? (bid + ask) / 2 : history.last)
+         : ((bid != null && ask != null) ? (bid + ask) / 2 : history.last);
+-    if (last == null || last <= 0 || bid == null || ask == null || ask <= bid) {
++    if (last <= 0 || bid == null || ask == null || ask <= bid) {
+       throw StateError('BINANCE_QUOTE_PRICE_MISSING');
+     }
+     final previous = tickerRaw is Map
+diff --git a/test/local_paper_engine_test.dart b/test/local_paper_engine_test.dart
+index 9b05771..1724676 100644
+--- a/test/local_paper_engine_test.dart
++++ b/test/local_paper_engine_test.dart
+@@ -5,10 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
+ import 'package:shared_preferences/shared_preferences.dart';
+ 
+ class _FakeQuoteSource implements PaperQuoteSource {
+-  _FakeQuoteSource({required this.observedAt, this.quality = 'PUBLIC_DELAYED'});
++  _FakeQuoteSource({required this.observedAt});
+ 
+   final DateTime observedAt;
+-  final String quality;
+   int calls = 0;
+ 
+   @override
+@@ -28,7 +27,7 @@ class _FakeQuoteSource implements PaperQuoteSource {
+       previousClose: history.first,
+       observedAt: observedAt,
+       source: 'Test public delayed feed',
+-      quality: quality,
++      quality: 'PUBLIC_DELAYED',
+       history: history,
+       candles: List<Map<String, dynamic>>.generate(40, (index) {
+         final value = history[index];
+diff --git a/test/v56_demo_setup_flow_test.dart b/test/v56_demo_setup_flow_test.dart
+index 152f1e0..64cee51 100644
+--- a/test/v56_demo_setup_flow_test.dart
++++ b/test/v56_demo_setup_flow_test.dart
+@@ -43,6 +43,7 @@ void main() {
+         home: V56NativeShell(
+           controller: controller,
+           themeController: themes,
++          onLogout: () {},
+         ),
+       ),
+     );
+diff --git a/test/v56_ui_smoke_test.dart b/test/v56_ui_smoke_test.dart
+index 4f0dbb7..3e83da8 100644
+--- a/test/v56_ui_smoke_test.dart
++++ b/test/v56_ui_smoke_test.dart
+@@ -54,6 +54,7 @@ class _OwnedGuestShellState extends State<_OwnedGuestShell> {
+   Widget build(BuildContext context) => V56NativeShell(
+         controller: widget.controller,
+         themeController: widget.themeController,
++        onLogout: () {},
+       );
+ }
+ 
+diff --git a/test/v56_visual_capture_test.dart b/test/v56_visual_capture_test.dart
+index 277448f..2a3065a 100644
+--- a/test/v56_visual_capture_test.dart
++++ b/test/v56_visual_capture_test.dart
+@@ -37,7 +37,10 @@ class _OwnedVisualShellState extends State<_OwnedVisualShell> {
+   Widget build(BuildContext context) => RepaintBoundary(
+         key: const ValueKey('v56_visual_root'),
+         child: V56NativeShell(
+-            controller: widget.controller, themeController: widget.themes),
++          controller: widget.controller,
++          themeController: widget.themes,
++          onLogout: () {},
++        ),
+       );
+ }
