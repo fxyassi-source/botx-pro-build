@@ -1,0 +1,15 @@
+--- a/lib/app/v56_native_shell.dart
++++ b/lib/app/v56_native_shell.dart
+@@ -594,8 +594,10 @@
+     final accounts = widget.controller.accounts;
+     final portfolioPages = math.max(accounts.length, 1);
+     final totalPages = portfolioPages + 1;
+-    final compact = MediaQuery.sizeOf(context).width <= 390;
+-    final height = compact ? 430.0 : 438.0;
++    final viewportWidth = MediaQuery.sizeOf(context).width;
++    final compact = viewportWidth <= 390;
++    final narrow = viewportWidth < 340;
++    final height = narrow ? 476.0 : (compact ? 430.0 : 438.0);
+     return Column(
+       children: [
+         SizedBox(
