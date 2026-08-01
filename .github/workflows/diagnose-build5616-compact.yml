@@ -1,11 +1,9 @@
-name: Diagnose Build5616 Compact Overflow
+name: Diagnose Build5618 Compact Stage
 
 on:
   pull_request:
     branches: [main]
     paths:
-      - 'patches/build5616/compact-diagnostic.patch'
-      - 'patches/build5616/terminal-compact-fix.patch'
       - '.github/workflows/diagnose-build5616-compact.yml'
   workflow_dispatch:
 
@@ -16,18 +14,11 @@ permissions:
 jobs:
   compact-diagnostic:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     env:
-      BASE_RUN_ID: '30640115772'
-      BASE_ARTIFACT: BotX-Pro-V56.0.3-AnalyzerClean-Delivery-Build5615
-      BASE_SOURCE_ZIP: BotXPro-V56.0.3-AnalyzerClean-App-Source-Build5615.zip
-      PATCH_B64_SHA256: 1a5b31df61da1c7b011f6a40334713476a2ecb213fb2f808e04e8e4e0a6771eb
-      PATCH_SHA256: 373b4de355845d9d96f4a0f2c2c7229035ae16be70dda95dcc0f05413e534719
-      COMPACT_FIX_SHA256: 2529ddecdd37f2b4f885432d965bcb045b8d3dcb9fa9c8e947e7a62dd2fcc0d5
-      TERMINAL_FIX_SHA256: 3ba88cb7b961a69c30907dd1ab40d514dd2cba64ab669630bda9cf51b1c4f3ef
-      DIAGNOSTIC_SHA256: c180eb0bc9531f451d07ac3721fd6fc346cc5fd3e6e8c0ce7a49911a8b1dfc48
-      FIXTURE_SHA256: 73c9699759be1b4b38d266cc70a293a0204a72a3328484e4508f6c3de926ce14
-
+      BASE_RUN_ID: '30674277528'
+      BASE_ARTIFACT: BotX-Pro-V56.0.3-Guest-Preview-Delivery-Build5617
+      BASE_SOURCE_ZIP: BotXPro-V56.0.3-GuestPreview-Full-App-Source-Build5617.zip
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -42,33 +33,59 @@ jobs:
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
           run-id: ${{ env.BASE_RUN_ID }}
-      - name: Reconstruct diagnostic source
+      - name: Reconstruct current Build5618
         run: |
           set -euo pipefail
           mkdir app extracted
           unzip -q "previous/${BASE_SOURCE_ZIP}" -d extracted
-          APP_ROOT="$(dirname "$(find extracted -maxdepth 3 -name pubspec.yaml | head -n 1)")"
-          cp -a "${APP_ROOT}/." app/
-          cat patches/build5616/part*.b64 > build5616.patch.gz.b64
-          echo "${PATCH_B64_SHA256}  build5616.patch.gz.b64" | sha256sum -c --strict
-          base64 -d build5616.patch.gz.b64 | gzip -dc > build5616.patch
-          echo "${PATCH_SHA256}  build5616.patch" | sha256sum -c --strict
-          patch -p1 -d app < build5616.patch
-          echo "${COMPACT_FIX_SHA256}  patches/build5616/compact-history-fix.patch" | sha256sum -c --strict
-          patch -p1 -d app < patches/build5616/compact-history-fix.patch
-          echo "${TERMINAL_FIX_SHA256}  patches/build5616/terminal-compact-fix.patch" | sha256sum -c --strict
-          patch -p1 -d app < patches/build5616/terminal-compact-fix.patch
-          echo "${DIAGNOSTIC_SHA256}  patches/build5616/compact-diagnostic.patch" | sha256sum -c --strict
-          patch -p1 -d app < patches/build5616/compact-diagnostic.patch
-          mkdir -p app/test/support
-          echo "${FIXTURE_SHA256}  test/support/v56_server_snapshot_fixture.dart" | sha256sum -c --strict
-          cp test/support/v56_server_snapshot_fixture.dart app/test/support/
-          rm -f app/assets/v56/index.html app/lib/app/local_demo_engine.dart app/test/local_demo_engine_test.dart
-      - name: Run focused compact diagnostic
+          ROOT="$(dirname "$(find extracted -maxdepth 4 -name pubspec.yaml | head -1)")"
+          cp -a "$ROOT/." app/
+          cat patches/build5618/part*.b64 | base64 -d | gzip -dc > base.patch
+          patch -p1 -d app < base.patch
+          base64 -d patches/build5618/realfix.patch.gz.b64 | gzip -dc > realfix.patch
+          patch -p1 -d app < realfix.patch
+          base64 -d patches/build5618/selective-braces.patch.gz.b64 | gzip -dc > braces.patch
+          patch -p1 -d app < braces.patch
+          base64 -d patches/build5618/final-analyzer.patch.gz.b64 | gzip -dc > final.patch
+          patch -p1 -d app < final.patch
+      - name: Instrument exact compact stages
         working-directory: app
         run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('test/v56_ui_smoke_test.dart')
+          s=p.read_text()
+          a="""    expect(compactPair, findsOneWidget);
+    final compactPairInkWell = tester.widget<InkWell>("""
+          b="""    expect(compactPair, findsOneWidget);
+    final beforeRouteError = tester.takeException();
+    // ignore: avoid_print
+    print('BEFORE_ROUTE_ERROR=$beforeRouteError');
+    if (beforeRouteError != null) debugDumpRenderTree();
+    expect(beforeRouteError, isNull);
+    final compactPairInkWell = tester.widget<InkWell>("""
+          assert a in s
+          s=s.replace(a,b,1)
+          a2="""    expect(tester.getSize(chart).width, 320);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byTooltip('Back'));"""
+          b2="""    expect(tester.getSize(chart).width, 320);
+    final afterRouteError = tester.takeException();
+    // ignore: avoid_print
+    print('AFTER_ROUTE_ERROR=$afterRouteError');
+    if (afterRouteError != null) debugDumpRenderTree();
+    expect(afterRouteError, isNull);
+
+    await tester.tap(find.byTooltip('Back'));"""
+          assert a2 in s
+          p.write_text(s.replace(a2,b2,1))
+          PY
           flutter pub get
-          dart format lib/app/v56_native_shell.dart test/v56_ui_smoke_test.dart
+          dart format test/v56_ui_smoke_test.dart lib/app/v56_native_shell.dart lib/core/paper/local_paper_engine.dart
+      - name: Run focused compact test
+        working-directory: app
+        run: |
           flutter test --concurrency=1 --reporter expanded \
             --plain-name 'Market chart and strategy studio avoid overflow on compact UI' \
             test/v56_ui_smoke_test.dart
