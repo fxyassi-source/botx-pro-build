@@ -1,0 +1,176 @@
+name: BotX Pro V56.0.3 Build5621 Paper Quote Home Fix
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'patches/build5621/chunks/**'
+      - '.github/workflows/release-android-build5621-paper-quote-home-fix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: botx-build5621-paper-home-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BASE_RUN_ID: '30689470263'
+      BASE_ARTIFACT: BotX-Pro-V56.0.3-Consolidated-Institutional-Delivery-Build5620
+      BASE_SOURCE_ZIP: BotXPro-V56.0.3-Consolidated-Full-App-Source-Build5620.zip
+      PATCH_SHA: 65698ccdd86958111d2b7a775baeb14d4be5295ec5ce22971a9ab7187d17fd38
+      APK_NAME: BotXPro-V56.0.3-Paper-Quote-Home-Fix-Build5621.apk
+      SOURCE_NAME: BotXPro-V56.0.3-Paper-Quote-Home-Fix-Source-Build5621.zip
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.7'
+          channel: stable
+          cache: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.BASE_ARTIFACT }}
+          path: previous
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.BASE_RUN_ID }}
+
+      - name: Reconstruct exact Build5621 source
+        run: |
+          set -euo pipefail
+          mkdir app extracted
+          unzip -q "previous/${BASE_SOURCE_ZIP}" -d extracted
+          ROOT="$(dirname "$(find extracted -maxdepth 4 -name pubspec.yaml | head -1)")"
+          test -n "$ROOT"
+          cp -a "$ROOT/." app/
+          find app/lib/core/theme -type f -print0 | sort -z | xargs -0 sha256sum > theme-before.sha256
+          cat patches/build5621/chunks/part-*.b64 | tr -d '\r\n\t ' > build5621.b64
+          base64 -d build5621.b64 | gzip -dc > build5621.patch
+          test -s build5621.patch
+          echo "${PATCH_SHA}  build5621.patch" | sha256sum -c --strict
+          patch -p1 -d app < build5621.patch
+          grep -q '^version: 56.0.3+5621$' app/pubspec.yaml
+
+      - name: Restore authenticated release signing identity
+        run: |
+          set -euo pipefail
+          mkdir signing
+          gh release download botx-android-signing-v1 --repo "$GITHUB_REPOSITORY" \
+            --pattern botx-release.jks --pattern botx-signing.env --dir signing --clobber
+          source signing/botx-signing.env
+          echo "::add-mask::${STORE_PASSWORD}"
+          echo "::add-mask::${KEY_PASSWORD}"
+          cp signing/botx-release.jks app/android/app/botx-release.jks
+          printf 'storeFile=botx-release.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+            "$STORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" > app/android/key.properties
+
+      - name: Format and enforce locked Build5621 contracts
+        working-directory: app
+        run: |
+          set -euo pipefail
+          flutter pub get
+          dart format \
+            lib/app/v16_app_controller.dart \
+            lib/app/v56_native_shell.dart \
+            lib/core/paper/local_paper_engine.dart \
+            test/local_paper_engine_test.dart \
+            test/v56_demo_setup_flow_test.dart \
+            test/v56_ui_smoke_test.dart
+          cd ..
+          find app/lib/core/theme -type f -print0 | sort -z | xargs -0 sha256sum > theme-after.sha256
+          diff -u theme-before.sha256 theme-after.sha256
+          grep -q "v56_guest_sign_in_header" app/lib/app/v56_native_shell.dart
+          ! grep -q "class _V56GuestPreviewBanner" app/lib/app/v56_native_shell.dart
+          ! grep -q "v56_guest_preview_banner" app/lib/app/v56_native_shell.dart
+          grep -q "_queuedSymbols" app/lib/core/paper/local_paper_engine.dart
+          grep -q "_refreshCompletion" app/lib/core/paper/local_paper_engine.dart
+          grep -q "query2.finance.yahoo.com" app/lib/core/paper/local_paper_engine.dart
+          grep -q "PAPER_QUOTE_UNAVAILABLE" app/lib/app/v16_app_controller.dart
+          ! grep -R -n --fixed-strings 'VERIFIED_PAPER_QUOTE_REQUIRED' app/lib
+          grep -q "deploy waits for an in-flight quote refresh" app/test/local_paper_engine_test.dart
+          grep -q "lessThan(100)" app/test/v56_demo_setup_flow_test.dart
+          test ! -e app/lib/app/local_demo_engine.dart
+          test ! -e app/test/local_demo_engine_test.dart
+          ! find app -type f \( -name '*.jks' -o -name '*.keystore' \) -not -path 'app/android/app/botx-release.jks' | grep .
+
+      - name: Flutter analyze zero issues
+        id: analyze
+        working-directory: app
+        run: |
+          set -o pipefail
+          flutter analyze 2>&1 | tee ../analyze-build5621.log
+
+      - name: Complete non-visual Flutter regression suite
+        id: tests
+        working-directory: app
+        run: |
+          set -euo pipefail
+          mapfile -t TESTS < <(find test -type f -name '*_test.dart' ! -name 'v56_visual_capture_test.dart' | sort)
+          test "${#TESTS[@]}" -gt 0
+          timeout 45m flutter test --concurrency=1 --reporter expanded "${TESTS[@]}" 2>&1 | tee ../tests-build5621.log
+
+      - name: Build fresh signed release APK
+        id: build
+        working-directory: app
+        run: |
+          set -o pipefail
+          timeout 50m flutter build apk --release \
+            --build-name=56.0.3 --build-number=5621 \
+            --dart-define=BOTX_ENV=release-candidate \
+            --dart-define=ALLOW_LIVE_MODE=false 2>&1 | tee ../build-build5621.log
+
+      - name: Verify signature source hygiene and archives
+        id: package
+        run: |
+          set -euo pipefail
+          APK=app/build/app/outputs/flutter-apk/app-release.apk
+          TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee apksigner-build5621.log
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' apksigner-build5621.log
+          mkdir delivery
+          cp "$APK" "delivery/${APK_NAME}"
+          rm -f app/android/app/botx-release.jks app/android/key.properties
+          rm -rf app/build app/.dart_tool app/android/.gradle
+          ! find app -type f \( -name '*.jks' -o -name '*.keystore' -o -name key.properties \) | grep .
+          (cd app && zip -9 -qr "../delivery/${SOURCE_NAME}" . -x '.git/*' 'build/*' '.dart_tool/*' 'android/.gradle/*')
+          cp analyze-build5621.log tests-build5621.log build-build5621.log \
+            apksigner-build5621.log build5621.patch theme-before.sha256 theme-after.sha256 delivery/
+          cat > delivery/BUILD5621_RELEASE_REPORT.md <<'EOF'
+          # BotX Pro V56.0.3 Build5621
+          The persistent Paper Mode banner was removed from the app shell so Home begins with the locked Portfolio card immediately below the header. Guest sign-in remains available as a compact header action without changing Portfolio geometry or theme colours.
+          Paper quote refresh requests are serialized and queued instead of being dropped while another refresh is active. Public chart fetching retries through query1 and query2 hosts and supports generic forex and common crypto provider symbols. No unverified or synthetic price is used; unavailable data produces a user-facing retry message rather than an internal StateError.
+          ALLOW_LIVE_MODE=false.
+          EOF
+          (cd delivery && sha256sum * > SHA256SUMS.txt)
+          unzip -tq "delivery/${SOURCE_NAME}"
+          unzip -tq "delivery/${APK_NAME}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BotX-Pro-V56.0.3-Paper-Quote-Home-Fix-Delivery-Build5621
+          path: delivery/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Enforce every Build5621 release gate
+        if: always()
+        run: |
+          set -euo pipefail
+          test '${{ steps.analyze.outcome }}' = success
+          test '${{ steps.tests.outcome }}' = success
+          test '${{ steps.build.outcome }}' = success
+          test '${{ steps.package.outcome }}' = success
