@@ -25,7 +25,7 @@ jobs:
       BASE_RUN_ID: '30686260090'
       BASE_ARTIFACT: BotX-Pro-V56.0.3-Ledger-Fix-Delivery-Build5619
       BASE_SOURCE_ZIP: BotXPro-V56.0.3-Institutional-Full-App-Source-Build5619.zip
-      PATCH_B64_SHA: 988de6dbea4534d3f82bc0cd09cc3dfc6d67a4b6a0ef3030fb318d761c36a00d
+      PATCH_B64_SHA: ce10000a140b5f5c194413b752049e2b3f10fc99a23d2cc284e2a103069cf841
       PATCH_SHA: 4e275f0f40d1ffc9527c6495b54b70edb79f7da968d2d890e0b2c44629430c03
       APK_NAME: BotXPro-V56.0.3-Consolidated-Institutional-Build5620.apk
       SOURCE_NAME: BotXPro-V56.0.3-Consolidated-Full-App-Source-Build5620.zip
