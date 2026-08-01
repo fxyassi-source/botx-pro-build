@@ -1,0 +1,27 @@
+--- a/lib/app/v56_native_shell.dart
++++ b/lib/app/v56_native_shell.dart
+@@ -2664,13 +2664,17 @@
+                                   ),
+                                 ),
+                                 const SizedBox(width: 7),
+-                                Text(
+-                                  'LIVE BOT ENGINE',
+-                                  style: TextStyle(
+-                                    color: context.botx.accent,
+-                                    fontSize: 9,
+-                                    fontWeight: FontWeight.w900,
+-                                    letterSpacing: .75,
++                                Expanded(
++                                  child: Text(
++                                    'LIVE BOT ENGINE',
++                                    maxLines: 1,
++                                    overflow: TextOverflow.ellipsis,
++                                    style: TextStyle(
++                                      color: context.botx.accent,
++                                      fontSize: 9,
++                                      fontWeight: FontWeight.w900,
++                                      letterSpacing: .75,
++                                    ),
+                                   ),
+                                 ),
+                               ],

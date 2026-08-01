@@ -1,0 +1,197 @@
+name: BotX Pro V56.0.3 Analyzer-Clean Build5615
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'release-trigger/v56-0-3-build5615.txt'
+      - 'patches/BOTX_PRO_V56_0_3_ANALYZER_CLEAN_BUILD5615.patch'
+      - '.github/workflows/release-android-v56-0-3-build5615.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: v56-0-3-build5615-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  signed-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      SOURCE_RUN_ID: '30424626856'
+      SOURCE_ARTIFACT: BotX-Pro-V56.0.3-Kronos-EdgeToEdge-Delivery-Build5614
+      SOURCE_ZIP_SHA256: 2fc8be45669e5deb0d98b9afbe2678005759f416a8e9742942e552f149af940e
+      CLEANUP_PATCH_SHA256: 4fc234a3176be37d83e45802c58914afd5b7a7009fbc1eea2a71d5e57847c2c1
+      SIGNING_TAG: botx-android-signing-v1
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Checkout analyzer-clean branch
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Flutter 3.44.7
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.7'
+          channel: stable
+          cache: true
+
+      - name: Restore verified Build5614 source and apply cleanup
+        run: |
+          set -euo pipefail
+          mkdir previous
+          gh run download "${SOURCE_RUN_ID}" --repo "${GITHUB_REPOSITORY}" \
+            --name "${SOURCE_ARTIFACT}" --dir previous
+          SOURCE_ZIP='previous/BotXPro-V56.0.3-Kronos-EdgeToEdge-App-Source.zip'
+          test -s "${SOURCE_ZIP}"
+          echo "${SOURCE_ZIP_SHA256}  ${SOURCE_ZIP}" | sha256sum --check --strict
+          unzip -q "${SOURCE_ZIP}" -d .
+          echo "${CLEANUP_PATCH_SHA256}  patches/BOTX_PRO_V56_0_3_ANALYZER_CLEAN_BUILD5615.patch" \
+            | sha256sum --check --strict
+          patch -p1 -d app < patches/BOTX_PRO_V56_0_3_ANALYZER_CLEAN_BUILD5615.patch
+          grep -q '^version: 56.0.3+5615$' app/pubspec.yaml
+          grep -q '^flutter.versionCode=5615$' app/android/local.properties
+          echo 'ea9286ad0af3664726a9de34e9629a856918bb95a8ab7204e621f3c9557c9c2c  app/lib/core/theme/botx_palette.dart' | sha256sum --check --strict
+          echo 'f76500eb548d53f2e90141574e69b60c85090f8da9820e3d03c95ecbb184dcf7  app/lib/core/theme/v56_theme.dart' | sha256sum --check --strict
+          echo '834e0cd63298d9db8c9150cc15eb98da15ab408b71b165043f92ebc574568c8f  app/lib/core/theme/v56_theme_contract.dart' | sha256sum --check --strict
+
+      - name: Restore persistent release signing identity
+        run: |
+          set -euo pipefail
+          mkdir -p signing
+          gh release download "${SIGNING_TAG}" --repo "${GITHUB_REPOSITORY}" \
+            --pattern 'botx-release.jks' \
+            --pattern 'botx-signing.env' \
+            --dir signing --clobber
+          source signing/botx-signing.env
+          echo "::add-mask::${STORE_PASSWORD}"
+          echo "::add-mask::${KEY_PASSWORD}"
+          cp signing/botx-release.jks app/android/app/botx-release.jks
+          {
+            echo "storeFile=botx-release.jks"
+            echo "storePassword=${STORE_PASSWORD}"
+            echo "keyAlias=${KEY_ALIAS}"
+            echo "keyPassword=${KEY_PASSWORD}"
+          } > app/android/key.properties
+
+      - name: Resolve and format source
+        working-directory: app
+        run: |
+          set -euo pipefail
+          flutter pub get
+          dart format lib/app/v16_app_controller.dart lib/app/v56_native_shell.dart
+
+      - name: Analyze complete Flutter source
+        id: analyze
+        continue-on-error: true
+        working-directory: app
+        run: |
+          set -o pipefail
+          flutter analyze 2>&1 | tee ../analyze-build5615.log
+
+      - name: Run complete release tests
+        id: tests
+        continue-on-error: true
+        working-directory: app
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          : > ../tests-build5615.log
+
+          timeout 8m flutter test --concurrency=1 --reporter expanded \
+            test/kronos_contract_test.dart \
+            test/trading_view_widget_contract_test.dart \
+            test/v56_demo_setup_flow_test.dart 2>&1 | tee -a ../tests-build5615.log
+
+          mapfile -t regression_tests < <(
+            find test -maxdepth 1 -type f -name '*_test.dart' \
+              ! -name 'kronos_contract_test.dart' \
+              ! -name 'trading_view_widget_contract_test.dart' \
+              ! -name 'v56_demo_setup_flow_test.dart' \
+              ! -name 'v56_ui_smoke_test.dart' \
+              ! -name 'v56_visual_capture_test.dart' \
+              | sort
+          )
+          timeout 12m flutter test --concurrency=1 --reporter expanded \
+            "${regression_tests[@]}" 2>&1 | tee -a ../tests-build5615.log
+
+          timeout 12m flutter test --concurrency=1 --reporter expanded \
+            --name 'Market pair opens the full scrollable TradingView screen|Market chart and strategy studio avoid overflow on compact UI|Market chart remains full-width on a large Android viewport|Dashboard theme button cycles all eight locked modes|Bot selector keeps the four named bots and removes row Start buttons|Deploy Your Strategies opens the Ask AI full-screen route' \
+            test/v56_ui_smoke_test.dart 2>&1 | tee -a ../tests-build5615.log
+
+      - name: Build signed release APK
+        id: build
+        if: steps.analyze.outcome == 'success' && steps.tests.outcome == 'success'
+        continue-on-error: true
+        working-directory: app
+        run: |
+          set -o pipefail
+          timeout 30m flutter build apk --release \
+            --build-name=56.0.3 --build-number=5615 \
+            --dart-define=BOTX_ENV=release-candidate \
+            --dart-define=ALLOW_LIVE_MODE=false 2>&1 | tee ../build-release-5615.log
+
+      - name: Verify and package Build5615
+        id: package
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          APK='app/build/app/outputs/flutter-apk/app-release.apk'
+          if test -s "${APK}"; then
+            APKSIGNER="$(find "${ANDROID_HOME}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+            "${APKSIGNER}" verify --verbose --print-certs "${APK}" \
+              | tee apk-signature-verification-5615.txt
+          fi
+          if test -s "${APK}" \
+            && test "${{ steps.analyze.outcome }}" = success \
+            && test "${{ steps.tests.outcome }}" = success \
+            && test "${{ steps.build.outcome }}" = success; then
+            cp "${APK}" dist/BotXPro-V56.0.3-AnalyzerClean-Build5615.apk
+          fi
+          {
+            echo '# BotX Pro V56.0.3 Build5615 Validation'
+            echo '- Base: checksum-verified signed Build5614 source'
+            echo '- Android build code: 5615'
+            echo '- Flutter analyze: ${{ steps.analyze.outcome }}'
+            echo '- Complete release tests: ${{ steps.tests.outcome }}'
+            echo '- Signed APK build: ${{ steps.build.outcome }}'
+            echo '- Scope: analyzer cleanup only; no UI or trading behavior changes'
+            echo '- Eight locked themes: checksum preserved'
+          } > app/V56_0_3_BUILD5615_VALIDATION_REPORT.md
+          rm -f app/android/app/botx-release.jks app/android/key.properties
+          zip -qr dist/BotXPro-V56.0.3-AnalyzerClean-App-Source-Build5615.zip app \
+            -x 'app/build/*' 'app/.dart_tool/*' 'app/*.apk' 'app/*.aab'
+          cp analyze-build5615.log tests-build5615.log build-release-5615.log \
+            apk-signature-verification-5615.txt dist/ 2>/dev/null || true
+          (cd dist && find . -maxdepth 1 -type f \
+            \( -name '*.apk' -o -name '*.zip' \) -print0 \
+            | sort -z | xargs -0 -r sha256sum > SHA256SUMS.txt)
+
+      - name: Upload signed APK and evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BotX-Pro-V56.0.3-AnalyzerClean-Delivery-Build5615
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Enforce Build5615 release gates
+        if: always()
+        run: |
+          test "${{ steps.analyze.outcome }}" = success
+          test "${{ steps.tests.outcome }}" = success
+          test "${{ steps.build.outcome }}" = success
+          test "${{ steps.package.outcome }}" = success
+          test -s dist/BotXPro-V56.0.3-AnalyzerClean-Build5615.apk

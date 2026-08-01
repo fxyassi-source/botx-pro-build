@@ -1,0 +1,96 @@
+name: Diagnose Build5618 Exact Compact Overflow
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/release-android-build5618-final-v9.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: botx-build5618-exact-overflow-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      BASE_RUN_ID: '30674277528'
+      BASE_ARTIFACT: BotX-Pro-V56.0.3-Guest-Preview-Delivery-Build5617
+      BASE_SOURCE_ZIP: BotXPro-V56.0.3-GuestPreview-Full-App-Source-Build5617.zip
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.7'
+          channel: stable
+          cache: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.BASE_ARTIFACT }}
+          path: previous
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.BASE_RUN_ID }}
+
+      - name: Reconstruct exact V9 source
+        run: |
+          set -euo pipefail
+          mkdir app extracted
+          unzip -q "previous/${BASE_SOURCE_ZIP}" -d extracted
+          ROOT="$(dirname "$(find extracted -maxdepth 4 -name pubspec.yaml | head -1)")"
+          cp -a "$ROOT/." app/
+          cat patches/build5618/part*.b64 | base64 -d | gzip -dc > base.patch
+          patch -p1 -d app < base.patch
+          base64 -d patches/build5618/realfix.patch.gz.b64 | gzip -dc > realfix.patch
+          patch -p1 -d app < realfix.patch
+          base64 -d patches/build5618/selective-braces.patch.gz.b64 | gzip -dc > braces.patch
+          patch -p1 -d app < braces.patch
+          base64 -d patches/build5618/final-analyzer.patch.gz.b64 | gzip -dc > analyzer.patch
+          patch -p1 -d app < analyzer.patch
+          base64 -d patches/build5618/compact-final.patch.gz.b64 | gzip -dc > compact.patch
+          patch -p1 -d app < compact.patch
+
+      - name: Instrument Flutter overflow diagnostics
+        working-directory: app
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('test/v56_ui_smoke_test.dart')
+          s=p.read_text()
+          marker="""  testWidgets('Market chart and strategy studio avoid overflow on compact UI', (
+    tester,
+  ) async {
+    final (controller, _) = await pumpGuestShell("""
+          replacement="""  testWidgets('Market chart and strategy studio avoid overflow on compact UI', (
+    tester,
+  ) async {
+    final previousOnError = FlutterError.onError;
+    FlutterError.onError = (details) {
+      // ignore: avoid_print
+      print('BOTX_OVERFLOW_DETAILS_BEGIN');
+      FlutterError.dumpErrorToConsole(details, forceReport: true);
+      // ignore: avoid_print
+      print('BOTX_OVERFLOW_DETAILS_END');
+      previousOnError?.call(details);
+    };
+    addTearDown(() => FlutterError.onError = previousOnError);
+    final (controller, _) = await pumpGuestShell("""
+          assert marker in s
+          p.write_text(s.replace(marker,replacement,1))
+          PY
+          flutter pub get
+          dart format test/v56_ui_smoke_test.dart lib/app/v56_native_shell.dart
+
+      - name: Run focused diagnostic test
+        working-directory: app
+        run: |
+          flutter test --concurrency=1 --reporter expanded \
+            --plain-name 'Market chart and strategy studio avoid overflow on compact UI' \
+            test/v56_ui_smoke_test.dart

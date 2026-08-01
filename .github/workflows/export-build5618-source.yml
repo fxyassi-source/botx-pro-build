@@ -1,0 +1,58 @@
+name: Export Exact Build5618 Source
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/export-build5618-source.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      BASE_RUN_ID: '30674277528'
+      BASE_ARTIFACT: BotX-Pro-V56.0.3-Guest-Preview-Delivery-Build5617
+      BASE_SOURCE_ZIP: BotXPro-V56.0.3-GuestPreview-Full-App-Source-Build5617.zip
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.BASE_ARTIFACT }}
+          path: previous
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.BASE_RUN_ID }}
+      - name: Reconstruct exact current Build5618 source
+        run: |
+          set -euo pipefail
+          mkdir app extracted export
+          unzip -q "previous/${BASE_SOURCE_ZIP}" -d extracted
+          ROOT="$(dirname "$(find extracted -maxdepth 4 -name pubspec.yaml | head -1)")"
+          test -n "$ROOT"
+          cp -a "$ROOT/." app/
+          cat patches/build5618/part*.b64 | base64 -d | gzip -dc > base.patch
+          patch -p1 -d app < base.patch
+          base64 -d patches/build5618/realfix.patch.gz.b64 | gzip -dc > realfix.patch
+          patch -p1 -d app < realfix.patch
+          base64 -d patches/build5618/selective-braces.patch.gz.b64 | gzip -dc > braces.patch
+          patch -p1 -d app < braces.patch
+          base64 -d patches/build5618/final-analyzer.patch.gz.b64 | gzip -dc > analyzer.patch
+          patch -p1 -d app < analyzer.patch
+          base64 -d patches/build5618/compact-final.patch.gz.b64 | gzip -dc > compact.patch
+          patch -p1 -d app < compact.patch
+          rm -rf app/.dart_tool app/build app/android/.gradle
+          (cd app && zip -qr ../export/BotXPro-Build5618-Reconstructed-Source.zip .)
+          sha256sum export/BotXPro-Build5618-Reconstructed-Source.zip > export/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BotXPro-Build5618-Reconstructed-Source
+          path: export/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

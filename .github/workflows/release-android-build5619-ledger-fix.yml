@@ -1,0 +1,166 @@
+name: BotX Pro V56.0.3 Build5619 Ledger Fix Final
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'patches/build5619/dashboard-ledger.patch'
+      - '.github/workflows/release-android-build5619-ledger-fix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: botx-build5619-ledger-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BASE_RUN_ID: '30684652537'
+      BASE_ARTIFACT: BotX-Pro-V56.0.3-Institutional-Delivery-Build5618
+      BASE_SOURCE_ZIP: BotXPro-V56.0.3-Institutional-Full-App-Source-Build5618.zip
+      PATCH_SHA: f4a89add682477e3d8c7de4c9c1407727db39f2a6da77c1c163acd1d1803c2a2
+      APK_NAME: BotXPro-V56.0.3-Institutional-Paper-Build5619.apk
+      SOURCE_NAME: BotXPro-V56.0.3-Institutional-Full-App-Source-Build5619.zip
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.7'
+          channel: stable
+          cache: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.BASE_ARTIFACT }}
+          path: previous
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.BASE_RUN_ID }}
+
+      - name: Reconstruct Build5619 from signed Build5618 source
+        run: |
+          set -euo pipefail
+          mkdir app extracted
+          unzip -q "previous/${BASE_SOURCE_ZIP}" -d extracted
+          ROOT="$(dirname "$(find extracted -maxdepth 4 -name pubspec.yaml | head -1)")"
+          test -n "$ROOT"
+          cp -a "$ROOT/." app/
+          find app/lib/core/theme -type f -print0 | sort -z | xargs -0 sha256sum > theme-before.sha256
+          echo "${PATCH_SHA}  patches/build5619/dashboard-ledger.patch" | sha256sum -c --strict
+          patch -p1 -d app < patches/build5619/dashboard-ledger.patch
+          grep -q '^version: 56.0.3+5619$' app/pubspec.yaml
+          grep -q 'dashboardPerformanceFor' app/lib/app/v16_app_controller.dart
+          grep -q 'calculateDashboardPerformance' app/lib/app/v16_app_controller.dart
+          grep -q 'activityPerformance' app/lib/app/v56_native_shell.dart
+
+      - name: Restore authenticated release signing identity
+        run: |
+          set -euo pipefail
+          mkdir signing
+          gh release download botx-android-signing-v1 --repo "$GITHUB_REPOSITORY" \
+            --pattern botx-release.jks --pattern botx-signing.env --dir signing --clobber
+          source signing/botx-signing.env
+          echo "::add-mask::${STORE_PASSWORD}"
+          echo "::add-mask::${KEY_PASSWORD}"
+          cp signing/botx-release.jks app/android/app/botx-release.jks
+          printf 'storeFile=botx-release.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+            "$STORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" > app/android/key.properties
+
+      - name: Format and enforce immutable visual contracts
+        working-directory: app
+        run: |
+          set -euo pipefail
+          flutter pub get
+          dart format lib/app/v16_app_controller.dart lib/app/v56_native_shell.dart \
+            test/v16_performance_contract_test.dart
+          cd ..
+          find app/lib/core/theme -type f -print0 | sort -z | xargs -0 sha256sum > theme-after.sha256
+          diff -u theme-before.sha256 theme-after.sha256
+          grep -q "Filled open positions use current P/L" app/lib/app/v16_app_controller.dart
+          grep -q "pending orders are deliberately excluded" app/lib/app/v16_app_controller.dart
+          grep -q "activityPerformance.trades" app/lib/app/v56_native_shell.dart
+          grep -q "activityPerformance.positive" app/lib/app/v56_native_shell.dart
+          grep -q "activityPerformance.negative" app/lib/app/v56_native_shell.dart
+          grep -q "positive \* 100 / decided" app/lib/app/v16_app_controller.dart
+          grep -q "portfolio counters include active filled orders" app/test/v16_performance_contract_test.dart
+          test ! -e app/lib/app/local_demo_engine.dart
+          test ! -e app/assets/v56/index.html
+
+      - name: Flutter analyze zero issues
+        id: analyze
+        working-directory: app
+        run: |
+          set -o pipefail
+          flutter analyze 2>&1 | tee ../analyze-build5619.log
+
+      - name: Complete non-visual Flutter regression suite
+        id: tests
+        working-directory: app
+        run: |
+          set -euo pipefail
+          mapfile -t TESTS < <(find test -type f -name '*_test.dart' ! -name 'v56_visual_capture_test.dart' | sort)
+          test "${#TESTS[@]}" -gt 0
+          timeout 35m flutter test --concurrency=1 --reporter expanded "${TESTS[@]}" 2>&1 | tee ../tests-build5619.log
+
+      - name: Build fresh signed release APK
+        id: build
+        working-directory: app
+        run: |
+          set -o pipefail
+          timeout 45m flutter build apk --release \
+            --build-name=56.0.3 --build-number=5619 \
+            --dart-define=BOTX_ENV=release-candidate \
+            --dart-define=ALLOW_LIVE_MODE=false 2>&1 | tee ../build-build5619.log
+
+      - name: Verify signature source hygiene and package integrity
+        id: package
+        run: |
+          set -euo pipefail
+          APK=app/build/app/outputs/flutter-apk/app-release.apk
+          TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee apksigner-build5619.log
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' apksigner-build5619.log
+          mkdir delivery
+          cp "$APK" "delivery/${APK_NAME}"
+          rm -f app/android/app/botx-release.jks app/android/key.properties
+          rm -rf app/build app/.dart_tool app/android/.gradle
+          ! find app -type f \( -name '*.jks' -o -name '*.keystore' -o -name key.properties \) | grep .
+          (cd app && zip -9qr "../delivery/${SOURCE_NAME}" . -x '.git/*' 'build/*' '.dart_tool/*' 'android/.gradle/*')
+          cp analyze-build5619.log tests-build5619.log build-build5619.log \
+            apksigner-build5619.log theme-before.sha256 theme-after.sha256 \
+            patches/build5619/dashboard-ledger.patch delivery/
+          cat > delivery/BUILD5619_LEDGER_FIX_REPORT.md <<'EOF'
+          # BotX Pro V56.0.3 Build5619
+          Portfolio Trades, Positive, Negative and Win % now consume the same execution ledger displayed by Orders. Filled open positions use current P/L; completed trades use realised P/L; pending and terminal rows are excluded. Realised analytics remain completed-trades-only. V56 geometry, colours, themes, Terminal Hub, bot cards and feature routes were not redesigned.
+          EOF
+          (cd delivery && sha256sum * > SHA256SUMS.txt)
+          unzip -tq "delivery/${SOURCE_NAME}"
+          unzip -tq "delivery/${APK_NAME}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BotX-Pro-V56.0.3-Ledger-Fix-Delivery-Build5619
+          path: delivery/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Enforce every release gate
+        if: always()
+        run: |
+          set -euo pipefail
+          test '${{ steps.analyze.outcome }}' = success
+          test '${{ steps.tests.outcome }}' = success
+          test '${{ steps.build.outcome }}' = success
+          test '${{ steps.package.outcome }}' = success

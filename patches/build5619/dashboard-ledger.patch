@@ -1,0 +1,202 @@
+--- a/lib/app/v16_app_controller.dart
++++ b/lib/app/v16_app_controller.dart
+@@ -595,6 +595,85 @@
+   V16Performance performanceFor(String period) =>
+       calculatePerformance(tradesForPeriod(period));
+ 
++  /// Portfolio headline activity comes from the same execution ledger shown
++  /// in Orders. Filled open positions use current P/L, completed trades use
++  /// realised P/L, and pending orders are deliberately excluded until filled.
++  V16Performance dashboardPerformanceFor(String period) {
++    final now = DateTime.now();
++    final cutoff = switch (period) {
++      '1D' => now.subtract(const Duration(days: 1)),
++      '1W' => now.subtract(const Duration(days: 7)),
++      '1M' => DateTime(now.year, now.month - 1, now.day, now.hour, now.minute),
++      '1Y' => DateTime(now.year - 1, now.month, now.day, now.hour, now.minute),
++      _ => now.subtract(const Duration(days: 7)),
++    };
++    final closed = allClosedTrades
++        .where((trade) =>
++            trade.closedAt != null && !trade.closedAt!.isBefore(cutoff))
++        .toList()
++      ..sort((a, b) => a.closedAt!.compareTo(b.closedAt!));
++    final active = openOrders.where((row) {
++      final openedAt = _asDateTime(row['opened_at'] ??
++          row['openedAt'] ??
++          row['open_time'] ??
++          row['time_open'] ??
++          row['created_at']);
++      return openedAt == null || !openedAt.isBefore(cutoff);
++    }).toList(growable: false);
++    return calculateDashboardPerformance(
++      closedTrades: closed,
++      openOrders: active,
++    );
++  }
++
++  /// Calculates live Portfolio counters without corrupting realised analytics.
++  /// Terminal states accidentally present in the open collection are ignored.
++  @visibleForTesting
++  static V16Performance calculateDashboardPerformance({
++    required List<V16Trade> closedTrades,
++    required List<Map<String, dynamic>> openOrders,
++  }) {
++    final realised = calculatePerformance(closedTrades);
++    var positive = realised.positive;
++    var negative = realised.negative;
++    var activeTrades = 0;
++
++    for (final row in openOrders) {
++      final state = '${row['state'] ?? row['status'] ?? 'OPEN'}'
++          .trim()
++          .toLowerCase();
++      if (const {
++        'closed',
++        'cancelled',
++        'canceled',
++        'rejected',
++        'expired',
++      }.contains(state)) {
++        continue;
++      }
++      activeTrades++;
++      final pnl = _asDouble(row['open_pnl'] ??
++          row['openPnl'] ??
++          row['unrealized_pnl'] ??
++          row['unrealizedPnl'] ??
++          row['floating_pnl'] ??
++          row['profit']);
++      if (pnl != null && pnl > 0) positive++;
++      if (pnl != null && pnl < 0) negative++;
++    }
++
++    final trades = closedTrades.length + activeTrades;
++    final decided = positive + negative;
++    return V16Performance(
++      trades: trades,
++      positive: positive,
++      negative: negative,
++      winRate: decided == 0 ? 0 : positive * 100 / decided,
++      realizedPnl: realised.realizedPnl,
++      curve: realised.curve,
++    );
++  }
++
+   /// Calculates the dashboard period only from completed realised trades.
+   /// Empty input deliberately returns an empty curve so the UI cannot invent
+   /// a rising portfolio line.
+--- a/lib/app/v56_native_shell.dart
++++ b/lib/app/v56_native_shell.dart
+@@ -731,12 +731,15 @@
+   Widget build(BuildContext context) {
+     final account = controller.selectedFinancialAccount;
+     final selectedAccount = controller.selectedAccount;
+-    final performance = controller.performanceFor(controller.selectedPeriod);
++    final realisedPerformance =
++        controller.performanceFor(controller.selectedPeriod);
++    final activityPerformance =
++        controller.dashboardPerformanceFor(controller.selectedPeriod);
+     final currency = '${account?['currency'] ?? 'USD'}';
+     final balance = _doubleValue(account?['equity'] ?? account?['balance']);
+     final openPnl = _doubleValue(account?['openPnl'] ?? account?['open_pnl']);
+-    final realised = performance.realizedPnl;
+-    final positive = performance.empty || realised >= 0;
++    final realised = realisedPerformance.realizedPnl;
++    final positive = realisedPerformance.empty || realised >= 0;
+     final compact = MediaQuery.sizeOf(context).width <= 390;
+     final isDemo = selectedAccount?.isDemo ?? true;
+     final accountTitle = isDemo ? 'Demo account' : 'Real account';
+@@ -872,7 +875,7 @@
+               children: [
+                 Flexible(
+                   child: _StatusPill(
+-                    label: performance.empty
++                    label: realisedPerformance.empty
+                         ? 'No realised trades'
+                         : '${realised >= 0 ? '+' : ''}${_currencyMark(currency)}${_money(realised)}',
+                     positive: positive,
+@@ -967,26 +970,26 @@
+               ),
+               child: Row(
+                 children: [
+-                  _StatCell(label: 'Trades', value: '${performance.trades}'),
++                  _StatCell(label: 'Trades', value: '${activityPerformance.trades}'),
+                   _V56StatDivider(color: context.botx.cardBorderStrong),
+                   _StatCell(
+                     label: 'Positive',
+-                    value: '${performance.positive}',
++                    value: '${activityPerformance.positive}',
+                     positive: true,
+                   ),
+                   _V56StatDivider(color: context.botx.cardBorderStrong),
+                   _StatCell(
+                     label: 'Negative',
+-                    value: '${performance.negative}',
++                    value: '${activityPerformance.negative}',
+                     positive: false,
+                   ),
+                   _V56StatDivider(color: context.botx.cardBorderStrong),
+                   _StatCell(
+                     label: 'Win %',
+-                    value: performance.empty
++                    value: activityPerformance.empty
+                         ? '—'
+-                        : '${performance.winRate.toStringAsFixed(0)}%',
+-                    positive: !performance.empty && performance.winRate >= 50,
++                        : '${activityPerformance.winRate.toStringAsFixed(0)}%',
++                    positive: !activityPerformance.empty && activityPerformance.winRate >= 50,
+                   ),
+                 ],
+               ),
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -1,7 +1,7 @@
+ name: botx_pro_v16
+ publish_to: none
+ description: BotX Pro native Flutter application using the locked V56 Gold UI and cloud-authoritative trading.
+-version: 56.0.3+5618
++version: 56.0.3+5619
+ 
+ environment:
+   sdk: '>=3.4.0 <4.0.0'
+--- a/test/v16_performance_contract_test.dart
++++ b/test/v16_performance_contract_test.dart
+@@ -48,5 +48,37 @@
+       expect(result.winRate, 0);
+       expect(result.curve, [0]);
+     });
++
++
++    test('portfolio counters include active filled orders from the same ledger', () {
++      final result = V16AppController.calculateDashboardPerformance(
++        closedTrades: [
++          trade(12, day: 1),
++          trade(-4, day: 2),
++        ],
++        openOrders: const [
++          <String, dynamic>{'state': 'OPEN', 'open_pnl': 3.5},
++          <String, dynamic>{'state': 'OPEN', 'open_pnl': -0.4},
++          <String, dynamic>{'state': 'OPEN', 'open_pnl': 0},
++          <String, dynamic>{'state': 'CANCELLED', 'open_pnl': 99},
++        ],
++      );
++
++      expect(result.trades, 5);
++      expect(result.positive, 2);
++      expect(result.negative, 2);
++      expect(result.winRate, 50);
++      expect(result.realizedPnl, 8);
++      expect(result.curve, [12, 8]);
++    });
++
++    test('pending orders never enter portfolio trade statistics', () {
++      final result = V16AppController.calculateDashboardPerformance(
++        closedTrades: const [],
++        openOrders: const [],
++      );
++      expect(result.trades, 0);
++      expect(result.empty, isTrue);
++    });
+   });
+ }

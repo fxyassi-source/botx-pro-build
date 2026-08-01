@@ -1,0 +1,26 @@
+--- a/test/v56_ui_smoke_test.dart
++++ b/test/v56_ui_smoke_test.dart
+@@ -288,6 +288,11 @@
+     await tester.pump(const Duration(milliseconds: 250));
+     controller.selectTab(2);
+     await tester.pump();
++    expect(
++      tester.takeException(),
++      isNull,
++      reason: 'Bots landing screen overflowed at 320 px.',
++    );
+     final compactDeploy =
+         find.byKey(const ValueKey('v56_deploy_your_strategies'));
+     final botsList = find.byKey(const PageStorageKey('bots'));
+@@ -299,6 +304,11 @@
+           .first,
+       maxScrolls: 6,
+     );
++    expect(
++      tester.takeException(),
++      isNull,
++      reason: 'Bots screen overflowed while revealing Strategy Studio.',
++    );
+     await tester.tap(compactDeploy);
+ 
+     final studio = find.byKey(const ValueKey('v56_custom_bot_edge_to_edge'));

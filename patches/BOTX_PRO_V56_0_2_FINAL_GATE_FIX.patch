@@ -1,0 +1,51 @@
+--- a/test/v56_ui_smoke_test.dart
++++ b/test/v56_ui_smoke_test.dart
+@@ -150,9 +150,20 @@
+     await pumpUntil(tester, skip);
+     expect(skip, findsOneWidget);
+     await tester.tap(skip);
+-    await pumpUntil(tester, find.byKey(const ValueKey('v56_demo_setup')));
++    await tester.pump();
+ 
+-    expect(find.byKey(const ValueKey('v56_demo_setup')), findsOneWidget);
++    final guestShell = find.byType(V56NativeShell);
++    await pumpUntil(tester, guestShell);
++    expect(guestShell, findsOneWidget);
++
++    final controller = tester.widget<V56NativeShell>(guestShell).controller;
++    await tester.runAsync(controller.initialize);
++    await tester.pump();
++
++    final demoSetup = find.byKey(const ValueKey('v56_demo_setup'));
++    await pumpUntil(tester, demoSetup);
++
++    expect(demoSetup, findsOneWidget);
+     expect(find.text('Create Demo Account'), findsOneWidget);
+     final startDemo = find.byKey(const ValueKey('v56_start_demo_trading'));
+     expect(startDemo, findsOneWidget);
+@@ -244,8 +255,14 @@
+     final fullscreenSurface =
+         find.byKey(const ValueKey('v56_chart_only_surface'));
+     expect(fullscreenSurface, findsOneWidget);
++    final fullscreenAppBar = find.byType(AppBar);
++    expect(fullscreenAppBar, findsOneWidget);
+     expect(tester.getRect(fullscreenSurface).left, 0);
+     expect(tester.getSize(fullscreenSurface).width, 390);
++    expect(
++      tester.getTopLeft(fullscreenSurface).dy,
++      greaterThanOrEqualTo(tester.getBottomLeft(fullscreenAppBar).dy),
++    );
+     expect(find.text('EURUSD · 15m'), findsOneWidget);
+ 
+     await tester.pageBack();
+--- a/lib/app/v56_native_shell.dart
++++ b/lib/app/v56_native_shell.dart
+@@ -5511,7 +5511,7 @@
+         builder: (routeContext) => Scaffold(
+           key: const ValueKey('v56_chart_only_fullscreen'),
+           backgroundColor: routeContext.botx.background,
+-          extendBodyBehindAppBar: true,
++          extendBodyBehindAppBar: false,
+           appBar: AppBar(
+             backgroundColor: Colors.transparent,
+             surfaceTintColor: Colors.transparent,

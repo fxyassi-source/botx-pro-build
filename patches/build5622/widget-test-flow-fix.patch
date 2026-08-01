@@ -1,0 +1,110 @@
+--- a/test/v56_ui_smoke_test.dart
++++ b/test/v56_ui_smoke_test.dart
+@@ -100,6 +100,29 @@
+   return (appController, themeController);
+ }
+ 
++Future<void> openBotDeploymentFromPicker(
++  WidgetTester tester,
++  String botLabel,
++) async {
++  await tester.tap(find.byKey(const ValueKey('v56_bots_start_button')));
++  await tester.pumpAndSettle();
++
++  final sheet = find.byType(DraggableScrollableSheet);
++  expect(sheet, findsOneWidget);
++  final target = find.text(botLabel);
++  final sheetScrollable = find
++      .descendant(of: sheet, matching: find.byType(Scrollable))
++      .last;
++  await tester.scrollUntilVisible(
++    target,
++    180,
++    scrollable: sheetScrollable,
++    maxScrolls: 10,
++  );
++  await tester.tap(target);
++  await tester.pumpAndSettle();
++}
++
+ void main() {
+   TestWidgetsFlutterBinding.ensureInitialized();
+ 
+@@ -681,10 +704,7 @@
+       await pumpGuestShell(tester);
+       await tester.tap(find.byKey(const ValueKey('v56_nav_bots')));
+       await tester.pump(const Duration(milliseconds: 250));
+-      await tester.tap(find.byKey(const ValueKey('v56_bots_start_button')));
+-      await tester.pump(const Duration(milliseconds: 500));
+-      await tester.tap(find.text('DCA Bot'));
+-      await tester.pumpAndSettle();
++      await openBotDeploymentFromPicker(tester, 'DCA Bot');
+ 
+       expect(find.byKey(const ValueKey('v56_dca_entry_section')), findsOneWidget);
+       expect(find.byKey(const ValueKey('v56_dca_order_section')), findsOneWidget);
+@@ -695,10 +715,7 @@
+ 
+       await tester.pageBack();
+       await tester.pumpAndSettle();
+-      await tester.tap(find.byKey(const ValueKey('v56_bots_start_button')));
+-      await tester.pump(const Duration(milliseconds: 500));
+-      await tester.tap(find.text('GRID Bot'));
+-      await tester.pumpAndSettle();
++      await openBotDeploymentFromPicker(tester, 'GRID Bot');
+ 
+       expect(find.byKey(const ValueKey('v56_grid_structure_section')), findsOneWidget);
+       expect(find.byKey(const ValueKey('v56_grid_exit_section')), findsOneWidget);
+@@ -707,10 +724,7 @@
+ 
+       await tester.pageBack();
+       await tester.pumpAndSettle();
+-      await tester.tap(find.byKey(const ValueKey('v56_bots_start_button')));
+-      await tester.pump(const Duration(milliseconds: 500));
+-      await tester.tap(find.text('Institutional HFT'));
+-      await tester.pumpAndSettle();
++      await openBotDeploymentFromPicker(tester, 'Institutional HFT');
+       expect(find.byKey(const ValueKey('v56_hft_execution_section')), findsOneWidget);
+       expect(find.byKey(const ValueKey('v56_hft_risk_section')), findsOneWidget);
+       expect(find.text('Maximum consecutive rejects'), findsOneWidget);
+@@ -718,10 +732,7 @@
+ 
+       await tester.pageBack();
+       await tester.pumpAndSettle();
+-      await tester.tap(find.byKey(const ValueKey('v56_bots_start_button')));
+-      await tester.pump(const Duration(milliseconds: 500));
+-      await tester.tap(find.text('AI Institutional'));
+-      await tester.pumpAndSettle();
++      await openBotDeploymentFromPicker(tester, 'AI Institutional');
+       expect(find.byKey(const ValueKey('v56_ai_intelligence_section')), findsOneWidget);
+       expect(find.byKey(const ValueKey('v56_ai_risk_section')), findsOneWidget);
+       expect(find.text('No-trade threshold'), findsOneWidget);
+@@ -742,16 +753,19 @@
+       attempts: 80,
+     );
+     expect(find.text('Strategy type'), findsOneWidget);
+-    expect(find.text('Trend'), findsOneWidget);
+-    expect(find.text('Mean reversion'), findsOneWidget);
+-    expect(find.text('Breakout'), findsOneWidget);
+-    expect(find.text('DCA'), findsOneWidget);
+-    expect(find.text('Grid'), findsOneWidget);
+-    expect(find.text('HFT'), findsOneWidget);
+-    expect(
+-      find.byKey(const ValueKey('v56_custom_archetype_breakout')),
+-      findsOneWidget,
+-    );
++    for (final key in <String>[
++      'trend',
++      'mean_reversion',
++      'breakout',
++      'dca',
++      'grid',
++      'hft',
++    ]) {
++      expect(
++        find.byKey(ValueKey('v56_custom_archetype_$key')),
++        findsOneWidget,
++      );
++    }
+     expect(tester.takeException(), isNull);
+   });
+ 

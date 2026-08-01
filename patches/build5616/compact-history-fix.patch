@@ -1,0 +1,110 @@
+--- a/lib/app/v56_native_shell.dart
++++ b/lib/app/v56_native_shell.dart
+@@ -2301,10 +2301,13 @@
+                 ),
+               ],
+             ),
+-            child: Row(
+-              children: [
+-                Container(
+-                  width: 50,
++            child: LayoutBuilder(
++              builder: (context, constraints) {
++                final compact = constraints.maxWidth < 270;
++                return Row(
++                  children: [
++                    Container(
++                      width: 50,
+                   height: 50,
+                   decoration: BoxDecoration(
+                     color: context.botx.accent.withValues(alpha: 0.12),
+@@ -2356,16 +2359,25 @@
+                     ],
+                   ),
+                 ),
+-                const SizedBox(width: 8),
+-                Text(
+-                  'Build →',
+-                  style: TextStyle(
+-                    color: context.botx.accent,
+-                    fontSize: 12,
+-                    fontWeight: FontWeight.w900,
+-                  ),
+-                ),
+-              ],
++                    SizedBox(width: compact ? 4 : 8),
++                    if (compact)
++                      Icon(
++                        Icons.arrow_forward_rounded,
++                        color: context.botx.accent,
++                        size: 20,
++                      )
++                    else
++                      Text(
++                        'Build →',
++                        style: TextStyle(
++                          color: context.botx.accent,
++                          fontSize: 12,
++                          fontWeight: FontWeight.w900,
++                        ),
++                      ),
++                  ],
++                );
++              },
+             ),
+           ),
+         ),
+@@ -6652,7 +6664,12 @@
+         child: SafeArea(
+           child: LayoutBuilder(
+             builder: (context, constraints) => SingleChildScrollView(
+-              padding: const EdgeInsets.fromLTRB(22, 68, 22, 22),
++              padding: EdgeInsets.fromLTRB(
++                constraints.maxWidth < 360 ? 16 : 22,
++                68,
++                constraints.maxWidth < 360 ? 16 : 22,
++                22,
++              ),
+               child: ConstrainedBox(
+                 constraints: BoxConstraints(
+                   minHeight: math.max(0.0, constraints.maxHeight - 90),
+@@ -6732,19 +6749,20 @@
+                       ),
+                     ),
+                     const SizedBox(height: 12),
+-                    Row(
++                    Wrap(
++                      alignment: WrapAlignment.center,
++                      crossAxisAlignment: WrapCrossAlignment.center,
++                      spacing: 8,
++                      runSpacing: 4,
+                       children: [
+-                        Expanded(
+-                          child: Text(
+-                            'Not financial advice — verify before trading',
+-                            textAlign: TextAlign.center,
+-                            style: TextStyle(
+-                              color: context.botx.muted,
+-                              fontSize: 9.5,
+-                            ),
++                        Text(
++                          'Not financial advice — verify before trading',
++                          textAlign: TextAlign.center,
++                          style: TextStyle(
++                            color: context.botx.muted,
++                            fontSize: 9.5,
+                           ),
+                         ),
+-                        const SizedBox(width: 8),
+                         Text(
+                           'v56.0.3',
+                           style: TextStyle(
+@@ -7479,7 +7497,7 @@
+                   crossAxisAlignment: CrossAxisAlignment.start,
+                   children: [
+                     Text(
+-                      'Loaded bot history',
++                      'Complete bot history',
+                       style: TextStyle(
+                         fontSize: 20,
+                         fontWeight: FontWeight.w900,

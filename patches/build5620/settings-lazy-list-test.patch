@@ -1,0 +1,44 @@
+--- a/test/v56_ui_smoke_test.dart
++++ b/test/v56_ui_smoke_test.dart
+@@ -634,25 +634,35 @@
+     expect(find.text('Webhooks & Telegram'), findsNothing);
+     expect(find.text('Build information'), findsNothing);
+     expect(find.text('Backtesting'), findsNothing);
+-    expect(find.text('App sounds'), findsOneWidget);
+-    expect(find.text('Haptic feedback'), findsOneWidget);
+     expect(
+       find.byKey(const ValueKey('v56_settings_brokers_row_0')),
+       findsOneWidget,
+     );
++
++    final settingsList = find.byKey(const PageStorageKey('settings'));
++    final settingsScrollable = find
++        .descendant(of: settingsList, matching: find.byType(Scrollable))
++        .first;
++    final appSounds = find.text('App sounds');
++    await tester.scrollUntilVisible(
++      appSounds,
++      140,
++      scrollable: settingsScrollable,
++      maxScrolls: 8,
++    );
++    expect(appSounds, findsOneWidget);
++    expect(find.text('Haptic feedback'), findsOneWidget);
+     expect(
+       find.byKey(const ValueKey('v56_settings_feedback_row_0')),
+       findsOneWidget,
+     );
++
+     final securityCard =
+         find.byKey(const ValueKey('v56_settings_security_row_0'));
+-    final settingsList = find.byKey(const PageStorageKey('settings'));
+     await tester.scrollUntilVisible(
+       securityCard,
+       160,
+-      scrollable: find
+-          .descendant(of: settingsList, matching: find.byType(Scrollable))
+-          .first,
++      scrollable: settingsScrollable,
+       maxScrolls: 8,
+     );
+     expect(securityCard, findsOneWidget);

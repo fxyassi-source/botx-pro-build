@@ -1,0 +1,227 @@
+name: BotX Pro V56.0.3 Strict Build5616
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'release-trigger/v56-0-3-build5616.txt'
+      - 'patches/build5616/**'
+      - 'test/support/v56_server_snapshot_fixture.dart'
+      - '.github/workflows/release-android-build5616.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: v56-0-3-build5616-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  signed-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      BASE_RUN_ID: '30640115772'
+      BASE_ARTIFACT: BotX-Pro-V56.0.3-AnalyzerClean-Delivery-Build5615
+      BASE_SOURCE_ZIP: BotXPro-V56.0.3-AnalyzerClean-App-Source-Build5615.zip
+      PATCH_B64_SHA256: 1a5b31df61da1c7b011f6a40334713476a2ecb213fb2f808e04e8e4e0a6771eb
+      PATCH_SHA256: 373b4de355845d9d96f4a0f2c2c7229035ae16be70dda95dcc0f05413e534719
+      FIXTURE_SHA256: 73c9699759be1b4b38d266cc70a293a0204a72a3328484e4508f6c3de926ce14
+      COMPACT_FIX_SHA256: 2529ddecdd37f2b4f885432d965bcb045b8d3dcb9fa9c8e947e7a62dd2fcc0d5
+      TERMINAL_FIX_SHA256: 3ba88cb7b961a69c30907dd1ab40d514dd2cba64ab669630bda9cf51b1c4f3ef
+      SIGNING_TAG: botx-android-signing-v1
+
+    steps:
+      - name: Checkout Build5616 branch
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Flutter 3.44.7
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.7'
+          channel: stable
+          cache: true
+
+      - name: Restore verified Build5615 app source
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.BASE_ARTIFACT }}
+          path: previous
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.BASE_RUN_ID }}
+
+      - name: Apply strict Build5616 source delta
+        run: |
+          set -euo pipefail
+          test -s "previous/${BASE_SOURCE_ZIP}"
+          mkdir app
+          unzip -q "previous/${BASE_SOURCE_ZIP}" -d extracted
+          APP_ROOT="$(dirname "$(find extracted -maxdepth 3 -name pubspec.yaml | head -n 1)")"
+          test -n "${APP_ROOT}"
+          cp -a "${APP_ROOT}/." app/
+
+          cat patches/build5616/part*.b64 > build5616.patch.gz.b64
+          echo "${PATCH_B64_SHA256}  build5616.patch.gz.b64" | sha256sum --check --strict
+          base64 -d build5616.patch.gz.b64 | gzip -dc > build5616.patch
+          echo "${PATCH_SHA256}  build5616.patch" | sha256sum --check --strict
+          patch -p1 -d app < build5616.patch
+
+          echo "${COMPACT_FIX_SHA256}  patches/build5616/compact-history-fix.patch" | sha256sum --check --strict
+          patch -p1 -d app < patches/build5616/compact-history-fix.patch
+          echo "${TERMINAL_FIX_SHA256}  patches/build5616/terminal-compact-fix.patch" | sha256sum --check --strict
+          patch -p1 -d app < patches/build5616/terminal-compact-fix.patch
+
+          mkdir -p app/test/support
+          echo "${FIXTURE_SHA256}  test/support/v56_server_snapshot_fixture.dart" | sha256sum --check --strict
+          cp test/support/v56_server_snapshot_fixture.dart app/test/support/
+
+          rm -f app/assets/v56/index.html
+          rm -f app/lib/app/local_demo_engine.dart
+          rm -f app/test/local_demo_engine_test.dart
+
+          python -m pip install --disable-pip-version-check pillow
+          python - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          names = [
+              'activtrades.png', 'acy.png', 'alpari.png', 'amarkets.png',
+              'avatrade.png', 'fbs.png', 'fxpro.png', 'fxtm.png',
+              'hf_markets.png', 'ic_markets.png', 'roboforex.png',
+              'traders_way.png', 'vantage.png', 'vt_markets.png',
+              'windsor.png', 'zero_markets.png',
+          ]
+          for name in names:
+              path = Path('app/assets/brokers') / name
+              if not path.is_file():
+                  raise SystemExit(f'missing broker logo: {path}')
+              with Image.open(path) as source:
+                  image = source.convert('RGBA')
+                  canvas = Image.new('RGBA', (128, 128), (0, 0, 0, 0))
+                  image.thumbnail((112, 112), Image.Resampling.LANCZOS)
+                  canvas.alpha_composite(
+                      image,
+                      ((128 - image.width) // 2, (128 - image.height) // 2),
+                  )
+                  canvas.save(path, optimize=True)
+          PY
+
+          grep -q '^version: 56.0.3+5616$' app/pubspec.yaml
+          grep -q 'Complete bot history' app/lib/app/v56_native_shell.dart
+          grep -q "'LIVE BOT ENGINE'" app/lib/app/v56_native_shell.dart
+          test -s app/test/support/v56_server_snapshot_fixture.dart
+          test ! -e app/lib/app/local_demo_engine.dart
+          test ! -e app/test/local_demo_engine_test.dart
+          test ! -e app/assets/v56/index.html
+          grep -q 'V56NativeShell' app/lib/app/botx_app.dart
+          grep -q 'Kronos confirmation' app/lib/app/v56_native_shell.dart
+          grep -q 'v56_market_chart' app/lib/app/v56_native_shell.dart
+
+      - name: Restore persistent release signing identity
+        run: |
+          set -euo pipefail
+          mkdir -p signing
+          gh release download "${SIGNING_TAG}" --repo "${GITHUB_REPOSITORY}" \
+            --pattern 'botx-release.jks' --pattern 'botx-signing.env' \
+            --dir signing --clobber
+          source signing/botx-signing.env
+          echo "::add-mask::${STORE_PASSWORD}"
+          echo "::add-mask::${KEY_PASSWORD}"
+          cp signing/botx-release.jks app/android/app/botx-release.jks
+          {
+            echo "storeFile=botx-release.jks"
+            echo "storePassword=${STORE_PASSWORD}"
+            echo "keyAlias=${KEY_ALIAS}"
+            echo "keyPassword=${KEY_PASSWORD}"
+          } > app/android/key.properties
+
+      - name: Resolve and format Build5616 source
+        working-directory: app
+        run: |
+          set -euo pipefail
+          flutter pub get
+          dart format lib/app/botx_app.dart lib/app/v16_app_controller.dart \
+            lib/app/v56_native_shell.dart test/v56_demo_setup_flow_test.dart \
+            test/v56_ui_smoke_test.dart test/v56_visual_capture_test.dart \
+            test/support/v56_server_snapshot_fixture.dart
+
+      - name: Analyze complete Flutter source
+        id: analyze
+        working-directory: app
+        run: |
+          set -o pipefail
+          flutter analyze 2>&1 | tee ../analyze-build5616.log
+
+      - name: Run complete non-visual release tests
+        id: tests
+        working-directory: app
+        run: |
+          set -euo pipefail
+          mapfile -t tests < <(find test -type f -name '*_test.dart' \
+            ! -name 'v56_visual_capture_test.dart' | sort)
+          test "${#tests[@]}" -gt 0
+          timeout 25m flutter test --concurrency=1 --reporter expanded \
+            "${tests[@]}" 2>&1 | tee ../tests-build5616.log
+
+      - name: Build signed release APK
+        id: build
+        working-directory: app
+        run: |
+          set -o pipefail
+          timeout 35m flutter build apk --release \
+            --build-name=56.0.3 --build-number=5616 \
+            --dart-define=BOTX_ENV=release-candidate \
+            --dart-define=ALLOW_LIVE_MODE=false 2>&1 | tee ../build-release-5616.log
+
+      - name: Verify and package Build5616
+        id: package
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          APK='app/build/app/outputs/flutter-apk/app-release.apk'
+          if test -s "${APK}"; then
+            APKSIGNER="$(find "${ANDROID_HOME}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+            "${APKSIGNER}" verify --verbose --print-certs "${APK}" \
+              | tee apk-signature-verification-5616.txt
+          fi
+          if test -s "${APK}" \
+            && test "${{ steps.analyze.outcome }}" = success \
+            && test "${{ steps.tests.outcome }}" = success \
+            && test "${{ steps.build.outcome }}" = success; then
+            cp "${APK}" dist/BotXPro-V56.0.3-Strict-Build5616.apk
+          fi
+          rm -f app/android/app/botx-release.jks app/android/key.properties
+          rm -rf app/build app/.dart_tool
+          zip -qr dist/BotXPro-V56.0.3-Strict-App-Source-Build5616.zip app
+          cp analyze-build5616.log tests-build5616.log build-release-5616.log \
+            apk-signature-verification-5616.txt dist/ 2>/dev/null || true
+          (cd dist && find . -maxdepth 1 -type f \
+            \( -name '*.apk' -o -name '*.zip' \) -print0 \
+            | sort -z | xargs -0 -r sha256sum > SHA256SUMS.txt)
+
+      - name: Upload Build5616 APK and source
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BotX-Pro-V56.0.3-Strict-Delivery-Build5616
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Enforce Build5616 release gates
+        if: always()
+        run: |
+          test "${{ steps.analyze.outcome }}" = success
+          test "${{ steps.tests.outcome }}" = success
+          test "${{ steps.build.outcome }}" = success
+          test "${{ steps.package.outcome }}" = success
+          test -s dist/BotXPro-V56.0.3-Strict-Build5616.apk
