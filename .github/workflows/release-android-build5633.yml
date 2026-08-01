@@ -1,0 +1,228 @@
+name: BotX Pro V56.0.5 Build5633 Mobile Demo APK
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'patches/build5633/**'
+      - 'release-trigger/build5633/**'
+      - '.github/workflows/release-android-build5633.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: botx-build5633-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 140
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BASE_RUN_ID: '30695204793'
+      BASE_ARTIFACT: BotX-Pro-V56.0.3-Strategy-Management-Delivery-Build5622-V6
+      BASE_SOURCE_ZIP: BotXPro-V56.0.3-Strategy-Management-Source-Build5622.zip
+      PATCH_B64_SHA256: fc58adcb075b7861cb12771513a142f93e83e28e28efb7cf1d5dd82fc724ac63
+      PATCH_SHA256: a102bdb692f1c0f97e9a0358af154712caed6ee41296079cf64c8088bad7bf34
+      APK_NAME: BotXPro-V56.0.5-Build5633-Mobile-Demo.apk
+      SOURCE_NAME: BotXPro-V56.0.5-Build5633-Mobile-Source.zip
+      SIGNING_TAG: botx-android-signing-v1
+
+    steps:
+      - name: Checkout exact Build5633 branch
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Flutter 3.44.7
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.7'
+          channel: stable
+          cache: true
+
+      - name: Restore signed Build5622 source authority
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.BASE_ARTIFACT }}
+          path: previous
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.BASE_RUN_ID }}
+
+      - name: Apply checksum-verified Build5633 mobile patch
+        run: |
+          set -euo pipefail
+          test -s "previous/${BASE_SOURCE_ZIP}"
+          mkdir app extracted
+          unzip -q "previous/${BASE_SOURCE_ZIP}" -d extracted
+          ROOT="$(dirname "$(find extracted -maxdepth 4 -name pubspec.yaml | head -1)")"
+          test -n "$ROOT"
+          cp -a "$ROOT/." app/
+
+          find app/lib/core/theme -type f -print0 | sort -z | xargs -0 sha256sum > theme-before.sha256
+          sha256sum app/lib/features/market/trading_view_chart.dart > market-chart-before.sha256
+
+          cat patches/build5633/part-*.b64 > build5633.patch.gz.b64
+          echo "${PATCH_B64_SHA256}  build5633.patch.gz.b64" | sha256sum -c --strict
+          base64 -d build5633.patch.gz.b64 | gzip -dc > build5633.patch
+          echo "${PATCH_SHA256}  build5633.patch" | sha256sum -c --strict
+          patch -p1 -d app < build5633.patch
+
+          grep -q '^version: 56.0.5+5633$' app/pubspec.yaml
+          test ! -e app/assets/v56/index.html
+          test ! -e app/lib/app/local_demo_engine.dart
+
+      - name: Restore authenticated release signing identity
+        run: |
+          set -euo pipefail
+          mkdir signing
+          gh release download "${SIGNING_TAG}" --repo "$GITHUB_REPOSITORY" \
+            --pattern botx-release.jks --pattern botx-signing.env --dir signing --clobber
+          source signing/botx-signing.env
+          echo "::add-mask::${STORE_PASSWORD}"
+          echo "::add-mask::${KEY_PASSWORD}"
+          cp signing/botx-release.jks app/android/app/botx-release.jks
+          printf 'storeFile=botx-release.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+            "$STORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" > app/android/key.properties
+
+      - name: Format and enforce locked UI/demo contracts
+        working-directory: app
+        run: |
+          set -euo pipefail
+          flutter pub get
+          dart format \
+            lib/app/botx_app.dart \
+            lib/app/v16_app_controller.dart \
+            lib/app/v56_native_shell.dart \
+            lib/core/market/market_session_service.dart \
+            lib/core/news/paper_news_service.dart \
+            lib/core/paper/local_paper_engine.dart \
+            lib/features/bots/institutional_bot_contracts.dart \
+            test/local_paper_engine_test.dart \
+            test/market_session_service_test.dart \
+            test/paper_news_service_test.dart \
+            test/v56_ui_smoke_test.dart
+          cd ..
+
+          find app/lib/core/theme -type f -print0 | sort -z | xargs -0 sha256sum > theme-after.sha256
+          sha256sum app/lib/features/market/trading_view_chart.dart > market-chart-after.sha256
+          diff -u theme-before.sha256 theme-after.sha256
+          diff -u market-chart-before.sha256 market-chart-after.sha256
+
+          for token in \
+            v56_dca_entry_section v56_grid_structure_section \
+            v56_hft_execution_section v56_ai_intelligence_section \
+            v56_settings_logout v56_bot_chart_ v56_bot_options_ \
+            'Bot history & performance' 'Open complete trade details'; do
+            grep -q "$token" app/lib/app/v56_native_shell.dart
+          done
+          grep -q 'MarketSessionService' app/lib/core/paper/local_paper_engine.dart
+          grep -q 'PaperNewsService' app/lib/core/paper/local_paper_engine.dart
+          grep -q 'ForexLive' app/lib/core/news/paper_news_service.dart
+          grep -q 'Fair Economy' app/lib/core/news/paper_news_service.dart
+          grep -q 'BinancePaperQuoteSource' app/lib/core/paper/local_paper_engine.dart
+          grep -q 'YahooPaperQuoteSource' app/lib/core/paper/local_paper_engine.dart
+          grep -q 'MARKET_CLOSED' app/lib/core/paper/local_paper_engine.dart
+          grep -q 'InstitutionalBotContractValidator' app/lib/features/bots/institutional_bot_contracts.dart
+          ! grep -q "'#BOTX-DEMO'" app/lib/app/v56_native_shell.dart
+          ! grep -R -n -i --fixed-strings 'Elirox' app/lib app/assets
+          ! find app -type f \( -name '*.jks' -o -name '*.keystore' \) -not -path 'app/android/app/botx-release.jks' | grep .
+
+      - name: Flutter analyze zero issues
+        id: analyze
+        working-directory: app
+        run: |
+          set -o pipefail
+          flutter analyze 2>&1 | tee ../analyze-build5633.log
+
+      - name: Focused real-price demo and UI contracts
+        id: focused_tests
+        working-directory: app
+        run: |
+          set -o pipefail
+          flutter test --concurrency=1 --reporter expanded \
+            test/market_session_service_test.dart \
+            test/paper_news_service_test.dart \
+            test/local_paper_engine_test.dart \
+            test/v56_ui_smoke_test.dart 2>&1 | tee ../focused-tests-build5633.log
+
+      - name: Complete non-visual Flutter regression suite
+        id: tests
+        working-directory: app
+        run: |
+          set -euo pipefail
+          mapfile -t TESTS < <(find test -type f -name '*_test.dart' ! -name 'v56_visual_capture_test.dart' | sort)
+          test "${#TESTS[@]}" -gt 0
+          timeout 55m flutter test --concurrency=1 --reporter expanded "${TESTS[@]}" 2>&1 | tee ../tests-build5633.log
+
+      - name: Build signed mobile demo APK
+        id: build
+        working-directory: app
+        run: |
+          set -o pipefail
+          timeout 60m flutter build apk --release \
+            --build-name=56.0.5 --build-number=5633 \
+            --dart-define=BOTX_ENV=paper \
+            --dart-define=ALLOW_GUEST_PREVIEW=true 2>&1 | tee ../build-build5633.log
+
+      - name: Verify package and produce exact review delivery
+        id: package
+        run: |
+          set -euo pipefail
+          APK=app/build/app/outputs/flutter-apk/app-release.apk
+          test -s "$APK"
+          TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee apksigner-build5633.log
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' apksigner-build5633.log
+
+          mkdir delivery
+          cp "$APK" "delivery/${APK_NAME}"
+          rm -f app/android/app/botx-release.jks app/android/key.properties
+          rm -rf app/build app/.dart_tool app/android/.gradle
+          ! find app -type f \( -name '*.jks' -o -name '*.keystore' -o -name key.properties \) | grep .
+          (cd app && zip -9 -qr "../delivery/${SOURCE_NAME}" . \
+            -x '.git/*' 'build/*' '.dart_tool/*' 'android/.gradle/*')
+
+          cp analyze-build5633.log focused-tests-build5633.log tests-build5633.log \
+            build-build5633.log apksigner-build5633.log build5633.patch \
+            theme-before.sha256 theme-after.sha256 \
+            market-chart-before.sha256 market-chart-after.sha256 delivery/
+          cat > delivery/BUILD5633_REVIEW_REPORT.md <<'EOF'
+          # BotX Pro V56.0.5 Build5633 — Mobile Demo Review APK
+          - Build5622 remains the visual source authority; locked theme files and Market TradingView component are byte-identical.
+          - Guest demo uses attributed public Binance/Yahoo quotes, source-linked ForexLive/Fair Economy news, quote-freshness and market-session fail-closed gates.
+          - Demo orders are local paper records only; no fake broker success is shown.
+          - DCA/Grid, AI Institutional and Institutional HFT retain separate strategy-specific setup and shared risk authority.
+          - Bot cards include double-tap history, chart and options actions. Order rows open complete trade details.
+          - Real broker options remain visible, but real execution still requires deployed AWS backend, verified broker session, reconciliation and risk approval.
+          EOF
+          (cd delivery && sha256sum * > SHA256SUMS.txt)
+          unzip -tq "delivery/${SOURCE_NAME}"
+          unzip -tq "delivery/${APK_NAME}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BotX-Pro-V56.0.5-Build5633-Mobile-Demo-Review
+          path: delivery/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Enforce every Build5633 APK gate
+        if: always()
+        run: |
+          set -euo pipefail
+          test '${{ steps.analyze.outcome }}' = success
+          test '${{ steps.focused_tests.outcome }}' = success
+          test '${{ steps.tests.outcome }}' = success
+          test '${{ steps.build.outcome }}' = success
+          test '${{ steps.package.outcome }}' = success
