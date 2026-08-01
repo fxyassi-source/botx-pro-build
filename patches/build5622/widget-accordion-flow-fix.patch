@@ -1,0 +1,43 @@
+--- a/test/v56_ui_smoke_test.dart
++++ b/test/v56_ui_smoke_test.dart
+@@ -123,6 +123,24 @@
+   await tester.pumpAndSettle();
+ }
+ 
++Future<void> expandDeploymentSection(
++  WidgetTester tester,
++  String title,
++) async {
++  final deployment = find.byKey(const ValueKey('v56_bot_deployment_config'));
++  final list = find.descendant(of: deployment, matching: find.byType(ListView)).first;
++  final scrollable = find.descendant(of: list, matching: find.byType(Scrollable)).first;
++  final target = find.text(title);
++  await tester.scrollUntilVisible(
++    target,
++    220,
++    scrollable: scrollable,
++    maxScrolls: 12,
++  );
++  await tester.tap(target);
++  await tester.pumpAndSettle();
++}
++
+ void main() {
+   TestWidgetsFlutterBinding.ensureInitialized();
+ 
+@@ -727,6 +745,7 @@
+       await openBotDeploymentFromPicker(tester, 'Institutional HFT');
+       expect(find.byKey(const ValueKey('v56_hft_execution_section')), findsOneWidget);
+       expect(find.byKey(const ValueKey('v56_hft_risk_section')), findsOneWidget);
++      await expandDeploymentSection(tester, 'Execution guard');
+       expect(find.text('Maximum consecutive rejects'), findsOneWidget);
+       expect(find.text('Stale-quote circuit breaker'), findsOneWidget);
+ 
+@@ -735,6 +754,7 @@
+       await openBotDeploymentFromPicker(tester, 'AI Institutional');
+       expect(find.byKey(const ValueKey('v56_ai_intelligence_section')), findsOneWidget);
+       expect(find.byKey(const ValueKey('v56_ai_risk_section')), findsOneWidget);
++      await expandDeploymentSection(tester, 'Intelligence controls');
+       expect(find.text('No-trade threshold'), findsOneWidget);
+       expect(find.text('Kronos confirmation'), findsOneWidget);
+       expect(tester.takeException(), isNull);
