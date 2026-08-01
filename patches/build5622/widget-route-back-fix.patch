@@ -1,0 +1,29 @@
+--- a/test/v56_ui_smoke_test.dart
++++ b/test/v56_ui_smoke_test.dart
+@@ -713,7 +713,7 @@
+       expect(find.byKey(const ValueKey('v56_grid_structure_section')), findsNothing);
+       expect(find.text('VERIFIED_PAPER_QUOTE_REQUIRED'), findsNothing);
+ 
+-      await tester.pageBack();
++      expect(await tester.binding.handlePopRoute(), isTrue);
+       await tester.pumpAndSettle();
+       await openBotDeploymentFromPicker(tester, 'GRID Bot');
+ 
+@@ -722,7 +722,7 @@
+       expect(find.byKey(const ValueKey('v56_grid_risk_section')), findsOneWidget);
+       expect(find.byKey(const ValueKey('v56_dca_order_section')), findsNothing);
+ 
+-      await tester.pageBack();
++      expect(await tester.binding.handlePopRoute(), isTrue);
+       await tester.pumpAndSettle();
+       await openBotDeploymentFromPicker(tester, 'Institutional HFT');
+       expect(find.byKey(const ValueKey('v56_hft_execution_section')), findsOneWidget);
+@@ -730,7 +730,7 @@
+       expect(find.text('Maximum consecutive rejects'), findsOneWidget);
+       expect(find.text('Stale-quote circuit breaker'), findsOneWidget);
+ 
+-      await tester.pageBack();
++      expect(await tester.binding.handlePopRoute(), isTrue);
+       await tester.pumpAndSettle();
+       await openBotDeploymentFromPicker(tester, 'AI Institutional');
+       expect(find.byKey(const ValueKey('v56_ai_intelligence_section')), findsOneWidget);
