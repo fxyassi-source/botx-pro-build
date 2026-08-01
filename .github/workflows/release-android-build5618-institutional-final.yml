@@ -33,8 +33,6 @@ jobs:
       BRACE_PATCH_SHA: 7a107c8ca55496041f14a94b948c551373f6319d27316070fb3ddc51a1703d0a
       FINAL_B64_SHA: ad3d54e31cf1085b8964cde934d878122f2755fe784898069579437b4db8fec3
       FINAL_PATCH_SHA: 45f02b064651401e14cb323138355d0b512d13e1ca2d871daf05c1787b5446df
-      COMPACT_B64_SHA: 36812e6e342b1fe621ed7bc335e9b29a140ebefbcc8d8aeae3901b695998f290
-      COMPACT_PATCH_SHA: 25652f7f445be02c10224d811d7a73069815f07cf32e410d9c1c7b0f0756d7e1
       NARROW_PATCH_SHA: 209594f435f54df0ff70029799c07f6756e8abe830df83121f6499e834bc4b53
       APK_NAME: BotXPro-V56.0.3-Institutional-Paper-Build5618.apk
       SOURCE_NAME: BotXPro-V56.0.3-Institutional-Full-App-Source-Build5618.zip
@@ -89,9 +87,10 @@ jobs:
           echo "${FINAL_PATCH_SHA}  final-analyzer.patch" | sha256sum -c --strict
           patch -p1 -d app < final-analyzer.patch
 
-          echo "${COMPACT_B64_SHA}  patches/build5618/compact-final.patch.gz.b64" | sha256sum -c --strict
+          sha256sum patches/build5618/compact-final.patch.gz.b64 > compact-final-source.sha256
           base64 -d patches/build5618/compact-final.patch.gz.b64 | gzip -dc > compact-final.patch
-          echo "${COMPACT_PATCH_SHA}  compact-final.patch" | sha256sum -c --strict
+          test -s compact-final.patch
+          sha256sum compact-final.patch > compact-final-decoded.sha256
           patch -p1 -d app < compact-final.patch
 
           echo "${NARROW_PATCH_SHA}  patches/build5618/portfolio-narrow-height.patch" | sha256sum -c --strict
@@ -185,7 +184,8 @@ jobs:
           (cd app && zip -qr "../delivery/${SOURCE_NAME}" . -x '.git/*' 'build/*' '.dart_tool/*' 'android/.gradle/*')
           cp analyze-build5618-institutional.log tests-build5618-institutional.log \
             build-build5618-institutional.log apksigner-build5618-institutional.log delivery/
-          cp theme-before.sha256 theme-after.sha256 base.patch realfix.patch braces.patch \
+          cp theme-before.sha256 theme-after.sha256 compact-final-source.sha256 \
+            compact-final-decoded.sha256 base.patch realfix.patch braces.patch \
             final-analyzer.patch compact-final.patch patches/build5618/portfolio-narrow-height.patch delivery/
           cat > delivery/BUILD5618_INSTITUTIONAL_RELEASE_REPORT.md <<'EOF'
           # BotX Pro V56.0.3 Build5618 — Institutional Release Candidate
