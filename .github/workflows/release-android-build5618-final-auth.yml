@@ -1,0 +1,183 @@
+name: BotX Pro V56.0.3 Build5618 Final Authenticated
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/release-android-build5618-final-auth.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: botx-build5618-final-auth-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  signed-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BASE_RUN_ID: '30674277528'
+      BASE_ARTIFACT: BotX-Pro-V56.0.3-Guest-Preview-Delivery-Build5617
+      BASE_SOURCE_ZIP: BotXPro-V56.0.3-GuestPreview-Full-App-Source-Build5617.zip
+      PATCH_B64_SHA256: bed2258414736708b7f5ab25ff6f21005759dc949222bd7d0762e872bda65d1e
+      PATCH_SHA256: 4b9d262e79663ed1d8cc6538c0223093bf9281cbc3dcd4def68eb66fe2341bfa
+      APK_NAME: BotXPro-V56.0.3-V56Paper-Build5618.apk
+      SOURCE_NAME: BotXPro-V56.0.3-V56Paper-Full-App-Source-Build5618.zip
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.7'
+          channel: stable
+          cache: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.BASE_ARTIFACT }}
+          path: previous
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.BASE_RUN_ID }}
+
+      - name: Reconstruct exact source and verify patch
+        run: |
+          set -euo pipefail
+          mkdir app extracted
+          unzip -q "previous/${BASE_SOURCE_ZIP}" -d extracted
+          ROOT="$(dirname "$(find extracted -maxdepth 4 -name pubspec.yaml | head -1)")"
+          cp -a "${ROOT}/." app/
+          find app/lib/core/theme -type f -print0 | sort -z | xargs -0 sha256sum > theme-before.sha256
+          cat patches/build5618/part*.b64 > patch.gz.b64
+          echo "${PATCH_B64_SHA256}  patch.gz.b64" | sha256sum -c --strict
+          base64 -d patch.gz.b64 | gzip -dc > build5618.patch
+          echo "${PATCH_SHA256}  build5618.patch" | sha256sum -c --strict
+          patch -p1 -d app < build5618.patch
+          grep -q '^version: 56.0.3+5618$' app/pubspec.yaml
+          test ! -e app/lib/app/local_demo_engine.dart
+          test ! -e app/test/local_demo_engine_test.dart
+          test ! -e app/assets/v56/index.html
+
+      - name: Restore authenticated signing identity
+        run: |
+          set -euo pipefail
+          mkdir signing
+          gh release download botx-android-signing-v1 \
+            --repo "${GITHUB_REPOSITORY}" \
+            --pattern botx-release.jks \
+            --pattern botx-signing.env \
+            --dir signing --clobber
+          source signing/botx-signing.env
+          echo "::add-mask::${STORE_PASSWORD}"
+          echo "::add-mask::${KEY_PASSWORD}"
+          cp signing/botx-release.jks app/android/app/botx-release.jks
+          printf 'storeFile=botx-release.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+            "$STORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" > app/android/key.properties
+
+      - name: Format and locked-contract audit
+        working-directory: app
+        run: |
+          set -euo pipefail
+          flutter pub get
+          dart format lib/app/botx_app.dart lib/app/v16_app_controller.dart \
+            lib/app/v56_native_shell.dart lib/core/paper/local_paper_engine.dart \
+            test/local_paper_engine_test.dart test/support/v56_server_snapshot_fixture.dart \
+            test/v56_demo_setup_flow_test.dart test/v56_ui_smoke_test.dart
+          cd ..
+          find app/lib/core/theme -type f -print0 | sort -z | xargs -0 sha256sum > theme-after.sha256
+          diff -u theme-before.sha256 theme-after.sha256
+          python3 - <<'PY'
+          from pathlib import Path
+          shell=Path('app/lib/app/v56_native_shell.dart').read_text()
+          paper=Path('app/lib/core/paper/local_paper_engine.dart').read_text()
+          tests=Path('app/test/v56_ui_smoke_test.dart').read_text()
+          shell_contracts=["'Demo account'","'#BOTX-DEMO'",'v56_account_identity_detail',
+            'class _FlatOrderTab','class _SettingsGroup','height: 190',
+            "ValueKey('v56_terminal_hub')",'class _V56GlobalFeedbackBoundary',
+            'Create My Own Bot','Deploy Your Strategies','Kronos confirmation']
+          paper_contracts=['PUBLIC_DELAYED','query1.finance.yahoo.com',"'max_positions': 6",'riskPerTrade']
+          test_contracts=['portfolioRect.width, 368','all active bot families keep the exact compact card height']
+          missing=[x for x in shell_contracts if x not in shell]
+          missing += [x for x in paper_contracts if x not in paper]
+          missing += [x for x in test_contracts if x not in tests]
+          assert not missing, missing
+          for value in ('144','148','430','438'):
+            assert value in shell
+          for key in ('dark','dark-light','elite','elite-light','gold','gold-light','purple','purple-light'):
+            assert f'v56_theme_choice_{key}' in tests
+          assert 'BotX Pro Demo Simulator' not in shell
+          print('Locked contracts: PASS')
+          PY
+
+      - name: Flutter analyze
+        id: analyze
+        working-directory: app
+        run: flutter analyze 2>&1 | tee ../analyze-build5618.log
+
+      - name: Complete non-visual Flutter tests
+        id: tests
+        working-directory: app
+        run: |
+          set -euo pipefail
+          mapfile -t TESTS < <(find test -type f -name '*_test.dart' ! -name 'v56_visual_capture_test.dart' | sort)
+          timeout 30m flutter test --concurrency=1 --reporter expanded "${TESTS[@]}" 2>&1 | tee ../tests-build5618.log
+
+      - name: Build fresh signed APK
+        id: build
+        working-directory: app
+        run: |
+          timeout 40m flutter build apk --release \
+            --build-name=56.0.3 --build-number=5618 \
+            --dart-define=BOTX_ENV=release-candidate \
+            --dart-define=ALLOW_LIVE_MODE=false \
+            2>&1 | tee ../build-build5618.log
+
+      - name: Verify signature and package
+        id: package
+        run: |
+          set -euo pipefail
+          APK=app/build/app/outputs/flutter-apk/app-release.apk
+          TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee apksigner-build5618.log
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' apksigner-build5618.log
+          mkdir delivery
+          cp "$APK" "delivery/${APK_NAME}"
+          rm -f app/android/app/botx-release.jks app/android/key.properties
+          rm -rf app/build app/.dart_tool app/android/.gradle
+          ! find app -type f \( -name '*.jks' -o -name '*.keystore' -o -name key.properties \) | grep .
+          (cd app && zip -qr "../delivery/${SOURCE_NAME}" . -x '.git/*' 'build/*' '.dart_tool/*' 'android/.gradle/*')
+          cp analyze-build5618.log tests-build5618.log build-build5618.log apksigner-build5618.log delivery/
+          cp theme-before.sha256 theme-after.sha256 build5618.patch delivery/
+          cat > delivery/BUILD5618_RELEASE_REPORT.md <<'EOF'
+          BotX Pro V56.0.3 Build5618
+          Approved v5 Portfolio/Home, flat Settings and Orders, exact 190px active bot cards, Terminal theme-token correction and global sound/haptics are implemented.
+          Paper mode uses attributed public delayed quotes, persistent virtual funds and bounded BotX-compatible strategy/risk rules. It is not broker execution or real-money trading.
+          Theme source files are byte-identical. ALLOW_LIVE_MODE=false.
+          EOF
+          (cd delivery && sha256sum * > SHA256SUMS.txt)
+          unzip -tq "delivery/${SOURCE_NAME}"
+          unzip -tq "delivery/${APK_NAME}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BotX-Pro-V56.0.3-Paper-V56-Delivery-Build5618
+          path: delivery/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Enforce release gates
+        if: always()
+        run: |
+          test '${{ steps.analyze.outcome }}' = success
+          test '${{ steps.tests.outcome }}' = success
+          test '${{ steps.build.outcome }}' = success
+          test '${{ steps.package.outcome }}' = success
