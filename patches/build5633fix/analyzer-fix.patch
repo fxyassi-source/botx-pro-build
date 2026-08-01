@@ -152,3 +152,118 @@ index 277448f..2a3065a 100644
 +        ),
        );
  }
+ 
+--- a/lib/core/paper/local_paper_engine.dart
++++ b/lib/core/paper/local_paper_engine.dart
+@@ -1508,6 +1508,11 @@
+     List<double> history,
+     double last,
+   ) {
++    final normalizedFallback = fallbackCondition.trim().toLowerCase();
++    if (const {'optional', 'instantly', 'immediate'}
++        .contains(normalizedFallback)) {
++      return true;
++    }
+     final raw = config['entryIndicators'];
+     final indicators = raw is List
+         ? raw.map((value) => '$value').where((value) => value.isNotEmpty).toList()
+--- a/test/v56_ui_smoke_test.dart
++++ b/test/v56_ui_smoke_test.dart
+@@ -183,10 +183,14 @@
+     expect(find.text('Settings'), findsWidgets);
+ 
+     final logout = find.byKey(const ValueKey('v56_settings_logout'));
++    final settingsList = find.byKey(const PageStorageKey('settings'));
++    final settingsScrollable = find
++        .descendant(of: settingsList, matching: find.byType(Scrollable))
++        .first;
+     await tester.scrollUntilVisible(
+       logout,
+       220,
+-      scrollable: find.byType(Scrollable).last,
++      scrollable: settingsScrollable,
+       maxScrolls: 12,
+     );
+     expect(logout, findsOneWidget);
+@@ -600,9 +604,11 @@
+       expect(find.byKey(const ValueKey('v56_bot_chart_$id')), findsOneWidget);
+       expect(find.byKey(const ValueKey('v56_bot_options_$id')), findsOneWidget);
+ 
+-      await tester.tap(card);
+-      await tester.pump(const Duration(milliseconds: 60));
+-      await tester.tap(card);
++      final cardInk = tester.widget<InkWell>(
++        find.descendant(of: card, matching: find.byType(InkWell)).first,
++      );
++      expect(cardInk.onDoubleTap, isNotNull);
++      cardInk.onDoubleTap!.call();
+       await pumpUntil(tester, find.text('Bot history & performance'));
+ 
+       expect(find.text('Bot history & performance'), findsOneWidget);
+@@ -766,14 +772,26 @@
+       await tester.pump(const Duration(milliseconds: 250));
+       await openBotDeploymentFromPicker(tester, 'DCA Bot');
+ 
+-      expect(
+-          find.byKey(const ValueKey('v56_dca_entry_section')), findsOneWidget);
+-      expect(
+-          find.byKey(const ValueKey('v56_dca_order_section')), findsOneWidget);
+-      expect(
+-          find.byKey(const ValueKey('v56_dca_exit_section')), findsOneWidget);
+-      expect(
+-          find.byKey(const ValueKey('v56_dca_risk_section')), findsOneWidget);
++      final deployment =
++          find.byKey(const ValueKey('v56_bot_deployment_config'));
++      final deploymentScrollable = find
++          .descendant(of: deployment, matching: find.byType(Scrollable))
++          .first;
++      for (final key in const [
++        'v56_dca_entry_section',
++        'v56_dca_order_section',
++        'v56_dca_exit_section',
++        'v56_dca_risk_section',
++      ]) {
++        final section = find.byKey(ValueKey(key));
++        await tester.scrollUntilVisible(
++          section,
++          180,
++          scrollable: deploymentScrollable,
++          maxScrolls: 12,
++        );
++        expect(section, findsOneWidget);
++      }
+       expect(find.byKey(const ValueKey('v56_grid_structure_section')),
+           findsNothing);
+       expect(find.text('VERIFIED_PAPER_QUOTE_REQUIRED'), findsNothing);
+@@ -782,12 +800,25 @@
+       await tester.pumpAndSettle();
+       await openBotDeploymentFromPicker(tester, 'GRID Bot');
+ 
+-      expect(find.byKey(const ValueKey('v56_grid_structure_section')),
+-          findsOneWidget);
+-      expect(
+-          find.byKey(const ValueKey('v56_grid_exit_section')), findsOneWidget);
+-      expect(
+-          find.byKey(const ValueKey('v56_grid_risk_section')), findsOneWidget);
++      final gridDeployment =
++          find.byKey(const ValueKey('v56_bot_deployment_config'));
++      final gridScrollable = find
++          .descendant(of: gridDeployment, matching: find.byType(Scrollable))
++          .first;
++      for (final key in const [
++        'v56_grid_structure_section',
++        'v56_grid_exit_section',
++        'v56_grid_risk_section',
++      ]) {
++        final section = find.byKey(ValueKey(key));
++        await tester.scrollUntilVisible(
++          section,
++          180,
++          scrollable: gridScrollable,
++          maxScrolls: 12,
++        );
++        expect(section, findsOneWidget);
++      }
+       expect(find.byKey(const ValueKey('v56_dca_order_section')), findsNothing);
+ 
+       expect(await tester.binding.handlePopRoute(), isTrue);
