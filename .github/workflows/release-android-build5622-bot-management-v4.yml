@@ -1,0 +1,188 @@
+name: BotX Pro V56.0.3 Build5622 Strategy Management V4
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'patches/build5622/**'
+      - '.github/workflows/release-android-build5622-bot-management-v4.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: botx-build5622-strategy-management-v4-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 130
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BASE_RUN_ID: '30689470263'
+      BASE_ARTIFACT: BotX-Pro-V56.0.3-Consolidated-Institutional-Delivery-Build5620
+      BASE_SOURCE_ZIP: BotXPro-V56.0.3-Consolidated-Full-App-Source-Build5620.zip
+      PATCH_SHA: f0089435377c8e95236d4240f0304ec518892ee900ec3b002c1c5da040a9e158
+      APK_NAME: BotXPro-V56.0.3-Strategy-Management-Build5622.apk
+      SOURCE_NAME: BotXPro-V56.0.3-Strategy-Management-Source-Build5622.zip
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.7'
+          channel: stable
+          cache: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.BASE_ARTIFACT }}
+          path: previous
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.BASE_RUN_ID }}
+
+      - name: Reconstruct checksum-locked Build5622 source
+        run: |
+          set -euo pipefail
+          mkdir app extracted
+          unzip -q "previous/${BASE_SOURCE_ZIP}" -d extracted
+          ROOT="$(dirname "$(find extracted -maxdepth 4 -name pubspec.yaml | head -1)")"
+          test -n "$ROOT"
+          cp -a "$ROOT/." app/
+          find app/lib/core/theme -type f -print0 | sort -z | xargs -0 sha256sum > theme-before.sha256
+          cat patches/build5622/chunks/part-*.b64 > build5622.b64
+          base64 -d build5622.b64 | gzip -dc > build5622.patch
+          test -s build5622.patch
+          echo "${PATCH_SHA}  build5622.patch" | sha256sum -c --strict
+          patch -p1 -d app < build5622.patch
+          grep -q '^version: 56.0.3+5622$' app/pubspec.yaml
+          test ! -e app/lib/app/local_demo_engine.dart
+          test ! -e app/test/local_demo_engine_test.dart
+          test ! -e app/assets/v56/index.html
+
+      - name: Restore authenticated release signing identity
+        run: |
+          set -euo pipefail
+          mkdir signing
+          gh release download botx-android-signing-v1 --repo "$GITHUB_REPOSITORY" \
+            --pattern botx-release.jks --pattern botx-signing.env --dir signing --clobber
+          source signing/botx-signing.env
+          echo "::add-mask::${STORE_PASSWORD}"
+          echo "::add-mask::${KEY_PASSWORD}"
+          cp signing/botx-release.jks app/android/app/botx-release.jks
+          printf 'storeFile=botx-release.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+            "$STORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" > app/android/key.properties
+
+      - name: Format source and enforce immutable security contracts
+        working-directory: app
+        run: |
+          set -euo pipefail
+          flutter pub get
+          dart format \
+            lib/app/botx_app.dart \
+            lib/app/v16_app_controller.dart \
+            lib/app/v56_native_shell.dart \
+            lib/core/paper/local_paper_engine.dart \
+            test/local_paper_engine_test.dart \
+            test/v56_demo_setup_flow_test.dart \
+            test/v56_ui_smoke_test.dart
+          cd ..
+          find app/lib/core/theme -type f -print0 | sort -z | xargs -0 sha256sum > theme-after.sha256
+          diff -u theme-before.sha256 theme-after.sha256
+          grep -q 'v56_dca_entry_section' app/lib/app/v56_native_shell.dart
+          grep -q 'v56_grid_structure_section' app/lib/app/v56_native_shell.dart
+          grep -q 'v56_hft_execution_section' app/lib/app/v56_native_shell.dart
+          grep -q 'v56_ai_intelligence_section' app/lib/app/v56_native_shell.dart
+          grep -q 'v56_manage_bot_settings' app/lib/app/v56_native_shell.dart
+          grep -q 'renameBot(' app/lib/app/v16_app_controller.dart
+          grep -q 'duplicateBot(' app/lib/app/v16_app_controller.dart
+          grep -q 'deployBotVersion(' app/lib/core/paper/local_paper_engine.dart
+          grep -q 'rollbackBotVersion(' app/lib/core/paper/local_paper_engine.dart
+          grep -q 'deleteBot(' app/lib/core/paper/local_paper_engine.dart
+          grep -q '_evaluateCustomRuleBot' app/lib/core/paper/local_paper_engine.dart
+          grep -q 'query2.finance.yahoo.com' app/lib/core/paper/local_paper_engine.dart
+          grep -q '_queuedSymbols' app/lib/core/paper/local_paper_engine.dart
+          grep -q 'ALLOW_GUEST_PREVIEW' app/lib/app/botx_app.dart
+          ! grep -R -n --fixed-strings 'VERIFIED_PAPER_QUOTE_REQUIRED' app/lib
+          ! grep -R -n --fixed-strings 'BotX Paper Broker' app/lib app/assets
+          ! grep -R -n --fixed-strings 'BotX Demo Simulator' app/lib app/assets
+          ! find app -type f \( -name '*.jks' -o -name '*.keystore' \) -not -path 'app/android/app/botx-release.jks' | grep .
+
+      - name: Flutter analyze zero issues
+        id: analyze
+        working-directory: app
+        run: |
+          set -o pipefail
+          flutter analyze 2>&1 | tee ../analyze-build5622.log
+
+      - name: Complete non-visual Flutter regression suite
+        id: tests
+        working-directory: app
+        run: |
+          set -euo pipefail
+          mapfile -t TESTS < <(find test -type f -name '*_test.dart' ! -name 'v56_visual_capture_test.dart' | sort)
+          test "${#TESTS[@]}" -gt 0
+          timeout 50m flutter test --concurrency=1 --reporter expanded "${TESTS[@]}" 2>&1 | tee ../tests-build5622.log
+
+      - name: Build fresh signed QA release APK
+        id: build
+        working-directory: app
+        run: |
+          set -o pipefail
+          timeout 55m flutter build apk --release \
+            --build-name=56.0.3 --build-number=5622 \
+            --dart-define=BOTX_ENV=release-candidate \
+            --dart-define=ALLOW_LIVE_MODE=false \
+            --dart-define=ALLOW_GUEST_PREVIEW=true 2>&1 | tee ../build-build5622.log
+
+      - name: Verify signature source hygiene and archives
+        id: package
+        run: |
+          set -euo pipefail
+          APK=app/build/app/outputs/flutter-apk/app-release.apk
+          TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee apksigner-build5622.log
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' apksigner-build5622.log
+          mkdir delivery
+          cp "$APK" "delivery/${APK_NAME}"
+          rm -f app/android/app/botx-release.jks app/android/key.properties
+          rm -rf app/build app/.dart_tool app/android/.gradle
+          ! find app -type f \( -name '*.jks' -o -name '*.keystore' -o -name key.properties \) | grep .
+          (cd app && zip -9 -qr "../delivery/${SOURCE_NAME}" . -x '.git/*' 'build/*' '.dart_tool/*' 'android/.gradle/*')
+          cp analyze-build5622.log tests-build5622.log build-build5622.log \
+            apksigner-build5622.log build5622.patch theme-before.sha256 theme-after.sha256 delivery/
+          cat > delivery/BUILD5622_RELEASE_REPORT.md <<'EOF'
+          # BotX Pro V56.0.3 Build5622 — Strategy-Specific Bot Management
+          DCA, Grid, HFT and AI Institutional have separate strategy-specific configuration and risk flows.
+          Custom bots support archetypes, edit, rename, duplicate, immutable version deployment, rollback and guarded delete.
+          Paper trading uses attributed delayed public quotes, queued refresh and query-host fallback with shared risk gates. No fabricated order is placed without a valid quote.
+          Home starts with Portfolio directly below the header. QA guest preview is enabled only by build flag; production must use ALLOW_GUEST_PREVIEW=false. ALLOW_LIVE_MODE=false.
+          Theme source remains byte-identical to Build5620.
+          EOF
+          (cd delivery && sha256sum * > SHA256SUMS.txt)
+          unzip -tq "delivery/${SOURCE_NAME}"
+          unzip -tq "delivery/${APK_NAME}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BotX-Pro-V56.0.3-Strategy-Management-Delivery-Build5622-V4
+          path: delivery/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Enforce every Build5622 release gate
+        if: always()
+        run: |
+          set -euo pipefail
+          test '${{ steps.analyze.outcome }}' = success
+          test '${{ steps.tests.outcome }}' = success
+          test '${{ steps.build.outcome }}' = success
+          test '${{ steps.package.outcome }}' = success
