@@ -290,3 +290,14 @@ index 277448f..2a3065a 100644
    await tester.tap(target);
    await tester.pumpAndSettle();
  }
+--- a/test/v56_ui_smoke_test.dart
++++ b/test/v56_ui_smoke_test.dart
+@@ -829,7 +829,7 @@
+       expect(find.byKey(const ValueKey('v56_ai_intelligence_section')),
+           findsOneWidget);
+       expect(find.byKey(const ValueKey('v56_ai_risk_section')), findsOneWidget);
+-      await expandDeploymentSection(tester, 'Intelligence controls');
++      await expandDeploymentSection(tester, 'Institutional intelligence');
+       expect(find.text('No-trade threshold'), findsOneWidget);
+       expect(find.text('Kronos confirmation'), findsOneWidget);
+       expect(tester.takeException(), isNull);
